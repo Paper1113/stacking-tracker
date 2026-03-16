@@ -364,39 +364,21 @@ def input_section():
     with c2:
         mode = st.radio(t("input_mode"), AVAILABLE_MODES, index=mode_idx, horizontal=True)
 
-    # Use st.text_input for reliable cross-platform input
-    # (components.html does not support bidirectional communication)
+    # Use st.number_input with value=None for an empty default field
+    # On iOS, <input type="number"> natively triggers the numeric keypad
     if 'time_input_key' not in st.session_state:
         st.session_state.time_input_key = 0
 
-    time_str = st.text_input(
+    time_val = st.number_input(
         t("input_time"),
-        value="",
+        min_value=0.001,
+        max_value=120.0,
+        value=None,
+        step=0.001,
+        format="%.3f",
         placeholder="0.000",
         key=f"time_input_{st.session_state.time_input_key}"
     )
-
-    # Inject JS to set inputmode="decimal" on the text input for iOS numeric keypad
-    # This is one-way (Python→JS) which components.html fully supports
-    components.html("""
-    <script>
-    (function() {
-        const inputs = window.parent.document.querySelectorAll('input[type="text"]');
-        inputs.forEach(function(input) {
-            if (input.placeholder === '0.000') {
-                input.inputMode = 'decimal';
-                input.pattern = '[0-9]*[.]?[0-9]*';
-            }
-        });
-    })();
-    </script>
-    """, height=0)
-
-    # Parse the entered value
-    try:
-        time_val = float(time_str) if time_str.strip() else 0.0
-    except ValueError:
-        time_val = 0.0
 
     st.write("")
 
@@ -408,9 +390,8 @@ def input_section():
 
     if submit_success or submit_dnf:
         is_scratch = submit_dnf
-        parsed_time = time_val
-        
-        if parsed_time <= 0:
+
+        if time_val is None or time_val <= 0:
             st.error(t("err_invalid_time"))
         else:
             timestamp_str = datetime.now(TIMEZONE).strftime("%Y-%m-%d %H:%M:%S")
@@ -420,13 +401,13 @@ def input_section():
                 ws = conn.client._client.open_by_url(url).worksheet("Data")
 
                 safe_mode = f"'{mode}" if mode in ["3-3-3", "3-6-3"] else mode
-                row_data = [timestamp_str, name, safe_mode, parsed_time, is_scratch]
+                row_data = [timestamp_str, name, safe_mode, time_val, is_scratch]
                 ws.append_row(row_data, table_range="A1", value_input_option="USER_ENTERED")
 
                 if is_scratch:
-                    st.warning(t("msg_dnf", name=name, mode=mode, time=parsed_time))
+                    st.warning(t("msg_dnf", name=name, mode=mode, time=time_val))
                 else:
-                    st.success(t("msg_success", name=name, mode=mode, time=parsed_time))
+                    st.success(t("msg_success", name=name, mode=mode, time=time_val))
 
                 st.session_state.last_name = name
                 st.session_state.last_mode = mode
