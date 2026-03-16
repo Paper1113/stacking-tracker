@@ -1,0 +1,17 @@
+# Streamlit secrets (NEVER COMMIT THIS)
+.streamlit/
+.streamlit/*
+
+# Virtual Environment
+venv/
+.venv/
+
+# Python cache files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Other typical ignores
+.DS_Store
+.env

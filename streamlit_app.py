@@ -2,6 +2,7 @@ import streamlit as st
 from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 # 設定網頁標題與排版 (手機睇會自動適應寬度)
 st.set_page_config(page_title="Stacking Tracker", layout="centered")
@@ -17,18 +18,49 @@ try:
     # 呢度改咗做 worksheet="Data"
     df = conn.read(worksheet="Data")
     
-    # 處理被 Google Sheets 自動轉換為日期的 Mode (例如 "2003-6-3" 變回 "3-6-3")
+    # 清理之前加落去保護字元的單引號 (如果有的話)
     if "Mode" in df.columns:
-        df["Mode"] = df["Mode"].astype(str)
-        df["Mode"] = df["Mode"].str.lstrip("'")  # 清理可能用作保護字元的單引號
-        df.loc[df["Mode"].str.contains("2003-3|2003-03", na=False), "Mode"] = "3-3-3"
-        df.loc[df["Mode"].str.contains("2003-6|2003-06", na=False), "Mode"] = "3-6-3"
+        df["Mode"] = df["Mode"].astype(str).str.lstrip("'")
         
     # 強制將 Time 轉做數字，方便計 PB
     df["Time"] = pd.to_numeric(df["Time"], errors='coerce')
 except Exception as e:
     st.error(f"讀取失敗（請檢查 Sheet 名稱是否為 Data）：{e}")
     df = pd.DataFrame(columns=["Timestamp", "Name", "Mode", "Time"])
+
+# 3. 讀取選手名單 - 嘗試指定分頁 "Players"，否則從 Data 中抽取或使用預設
+try:
+    players_df = conn.read(worksheet="Players")
+    # 假設選手名單在第一欄
+    if "Name" in players_df.columns:
+        names = players_df["Name"].dropna().astype(str).tolist()
+    else:
+        # Google Sheets 讀取時，預設會將第一行當作標題。
+        # 如果沒有特別寫 "Name" 做標題，第一個名字 (例如 Johnny) 就會變咗做欄位名稱 (Column Name)。
+        col_name = str(players_df.columns[0])
+        names = []
+        # 如果第一個名唔係類似 "Unnamed: 0" 嘅無效名稱，就加返入名單度
+        if not col_name.startswith("Unnamed"):
+            names.append(col_name)
+        # 加返其餘嘅名字
+        names.extend(players_df.iloc[:, 0].dropna().astype(str).tolist())
+    # 過濾空白名稱
+    names = [n.strip() for n in names if n.strip()]
+except Exception:
+    # 如果沒有 Players 分頁，就從 Data 的紀錄入面攞 unique 名字，再加個預設
+    if not df.empty and "Name" in df.columns:
+        names = df["Name"].dropna().unique().tolist()
+        names = [n for n in names if str(n).strip()]
+    else:
+        names = []
+        
+# 確保一定有選項
+if not names:
+    names = ["Johnny", "Ashley"]
+
+# 退防：如果 last_name 唔喺最新嘅名單入面，更新佢
+if 'last_name' in st.session_state and st.session_state.last_name not in names:
+    st.session_state.last_name = names[0]
 
 # --- 側邊欄：個人最佳 (PB) ---
 st.sidebar.header("🏆 個人最佳 (PB)")
@@ -53,11 +85,10 @@ else:
 
 # --- 主要錄入介面 ---
 if 'last_name' not in st.session_state:
-    st.session_state.last_name = "Johnny"
+    st.session_state.last_name = names[0] if names else "Johnny"
 if 'last_mode' not in st.session_state:
     st.session_state.last_mode = "3-3-3"
 
-names = ["Johnny", "Ashley"]
 modes = ["3-3-3", "3-6-3", "Cycle"]
 
 name_idx = names.index(st.session_state.last_name) if st.session_state.last_name in names else 0
@@ -81,26 +112,20 @@ if submit_button:
     if time_val <= 0:
         st.error("時間無效！")
     else:
-        new_entry = pd.DataFrame([{
-            "Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "Name": name,
-            "Mode": mode,
-            "Time": time_val
-        }])
+        timestamp_str = datetime.now(ZoneInfo("Asia/Hong_Kong")).strftime("%Y-%m-%d %H:%M:%S")
         
         try:
-            # 合併舊數據同新數據
-            updated_df = pd.concat([df, new_entry], ignore_index=True)
+            # 使用底層 gspread client 直接插入一行。
+            # 這樣可以觸發 Google Sheets 的「表格 (Table)」自動擴充功能，保留格式。
+            url = st.secrets.connections.gsheets.spreadsheet
+            ws = conn.client._client.open_by_url(url).worksheet("Data")
             
-            # 準備寫入：為防止 Google Sheets 自動將 "3-3-3" 轉回日期，加上單引號保護
-            df_to_save = updated_df.copy()
-            if "Mode" in df_to_save.columns:
-                df_to_save["Mode"] = df_to_save["Mode"].apply(
-                    lambda x: f"'{x}" if isinstance(x, str) and x in ["3-3-3", "3-6-3"] else x
-                )
-                
-            # 寫入時同樣指定 worksheet="Data"
-            conn.update(worksheet="Data", data=df_to_save)
+            # 準備要加入的新行資料，對應欄位順序 (假設是: Timestamp, Name, Mode, Time)
+            row_data = [timestamp_str, name, mode, time_val]
+            
+            # 傳入 table_range 強制讓 append_row 尋找表格並插入，從而擴展表格的格式 (通常用 "A1" 指向表格的左上角)
+            ws.append_row(row_data, table_range="A1")
+            
             st.success(f"✅ 已紀錄：{name} - {mode} - {time_val}s")
             
             # 記錄當前選擇，方便下一次不需要重新選擇
