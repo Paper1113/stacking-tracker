@@ -19,6 +19,7 @@
         border-radius: 8px;
         background-color: #f9f9f9;
         -webkit-appearance: none;
+        appearance: none;
       }
       input:focus {
         outline: 2px solid #ff4b4b;
@@ -62,9 +63,15 @@
         if (event.data.type === "streamlit:render") {
           onRender(event.data);
           
-          // Clear the input if the key changed
-          // Since we can't easily detect a totally new component vs redraw,
-          // we rely on Streamlit's key. If Streamlit changes the key, the iframe reloads entirely.
+          // Apply Streamlit's active theme (Dark Mode / Light Mode support)
+          let theme = event.data.theme;
+          if (theme) {
+            document.body.style.fontFamily = theme.font || "sans-serif";
+            const input = document.getElementById("num_input");
+            input.style.backgroundColor = theme.secondaryBackgroundColor || "#f9f9f9";
+            input.style.color = theme.textColor || "#31333F";
+            input.style.border = "1px solid transparent"; // Let focus take over
+          }
         }
       });
 

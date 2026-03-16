@@ -378,7 +378,7 @@ def input_section():
     if 'time_input_key' not in st.session_state:
         st.session_state.time_input_key = 0
 
-    st.markdown(f"<div style='margin-bottom: 5px; font-size: 14px; color: #31333F;'>{t('input_time')}</div>", unsafe_allow_html=True)
+    st.markdown(f"<div style='margin-bottom: 5px; font-size: 14px;'>{t('input_time')}</div>", unsafe_allow_html=True)
     time_val = decimal_input(key=f"time_input_{st.session_state.time_input_key}")
 
     st.write("")
