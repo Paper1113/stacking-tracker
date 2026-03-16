@@ -364,76 +364,23 @@ def input_section():
     with c2:
         mode = st.radio(t("input_mode"), AVAILABLE_MODES, index=mode_idx, horizontal=True)
 
-    # Use a custom HTML/JS input to reliably trigger iOS decimal keypad
-    # This bypasses Streamlit's React wrapper which sometimes blocks inputmode on Safari
-    # Render the custom input and capture its value
-    # Pass a clear_trigger so the JS knows when to empty the input box
-    clear_trigger = st.session_state.get('clear_input', False)
-    
-    input_html = f"""
-    <style>
-        body {{ margin: 0; padding: 0; font-family: sans-serif; }}
-        input {{
-            width: 100%;
-            height: 50px;
-            font-size: 20px;
-            padding: 10px;
-            box-sizing: border-box;
-            border: 1px solid #ccc;
-            border-radius: 8px;
-            background-color: #f9f9f9;
-        }}
-        input:focus {{ outline: 2px solid #ff4b4b; }}
-    </style>
-    <div style="margin-bottom: 5px; font-size: 14px; color: #31333F;">{t('input_time')}</div>
-    <!-- type="text" with inputmode="decimal" is the most reliable cross-platform way to trigger the numeric keypad with a decimal point on iOS -->
-    <input 
-        type="text" 
-        inputmode="decimal" 
-        pattern="[0-9]*[.]?[0-9]*"
-        placeholder="0.000"
-        id="timeInput"
-        oninput="sendValue()"
-    >
-    <script>
-        const input = document.getElementById('timeInput');
-        
-        // Handle clear trigger from Streamlit
-        const shouldClear = {str(clear_trigger).lower()};
-        if (shouldClear) {{
-            input.value = '';
-            // Reset Streamlit component value to null/0.0
-            window.parent.postMessage({{
-                type: 'streamlit:setComponentValue',
-                value: 0.0
-            }}, '*');
-        }}
+    # Use st.text_input for reliable cross-platform input
+    # (components.html does not support bidirectional communication)
+    if 'time_input_key' not in st.session_state:
+        st.session_state.time_input_key = 0
 
-        // Only allow numbers and one decimal point
-        input.addEventListener('input', function(e) {{
-            this.value = this.value.replace(/[^0-9.]/g, '').replace(/(\\..*?)\\..*/g, '$1');
-        }});
+    time_str = st.text_input(
+        t("input_time"),
+        value="",
+        placeholder="0.000",
+        key=f"time_input_{st.session_state.time_input_key}"
+    )
 
-        function sendValue() {{
-            const val = parseFloat(input.value);
-            // Send value back to Streamlit
-            window.parent.postMessage({{
-                type: 'streamlit:setComponentValue',
-                value: isNaN(val) ? 0.0 : val
-            }}, '*');
-        }}
-    </script>
-    """
-    
-    time_val = components.html(input_html, height=85)
-    
-    # If the component hasn't sent a value yet, default to 0.0
-    if time_val is None:
+    # Parse the entered value
+    try:
+        time_val = float(time_str) if time_str.strip() else 0.0
+    except ValueError:
         time_val = 0.0
-        
-    # Reset the flag after rendering the component
-    if clear_trigger:
-        st.session_state.clear_input = False
 
     st.write("")
 
@@ -445,13 +392,7 @@ def input_section():
 
     if submit_success or submit_dnf:
         is_scratch = submit_dnf
-        
-        # Safely convert the custom component's return value to a float
-        # components.html can return None, str, int, float, or other types
-        try:
-            parsed_time = float(time_val) if time_val is not None else 0.0
-        except (TypeError, ValueError, OverflowError):
-            parsed_time = 0.0
+        parsed_time = time_val
         
         if parsed_time <= 0:
             st.error(t("err_invalid_time"))
@@ -473,7 +414,7 @@ def input_section():
 
                 st.session_state.last_name = name
                 st.session_state.last_mode = mode
-                st.session_state.clear_input = True
+                st.session_state.time_input_key += 1
 
                 st.cache_data.clear()
                 st.rerun()
