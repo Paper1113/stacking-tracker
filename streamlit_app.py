@@ -370,6 +370,20 @@ def input_section():
         st.session_state.clear_input = False
     
     time_val = st.number_input(t("input_time"), min_value=0.0, max_value=120.0, key="input_time", step=0.001, format="%.3f")
+    
+    # Inject JavaScript to force numeric keypad on mobile devices
+    components.html(
+        """
+        <script>
+        const inputs = window.parent.document.querySelectorAll('input[type="number"]');
+        inputs.forEach(input => {
+            input.setAttribute('inputmode', 'decimal');
+            input.setAttribute('pattern', '[0-9]*');
+        });
+        </script>
+        """,
+        height=0,
+    )
 
     st.write("")
 
