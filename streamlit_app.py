@@ -447,9 +447,10 @@ def input_section():
         is_scratch = submit_dnf
         
         # Safely convert the custom component's return value to a float
+        # components.html can return None, str, int, float, or other types
         try:
             parsed_time = float(time_val) if time_val is not None else 0.0
-        except ValueError:
+        except (TypeError, ValueError, OverflowError):
             parsed_time = 0.0
         
         if parsed_time <= 0:
