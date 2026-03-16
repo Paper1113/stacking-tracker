@@ -275,7 +275,7 @@ if not df.empty:
             for p_name in sorted(progress_df['Name'].unique()):
                 with st.sidebar.expander(t("daily_expander", name=p_name), expanded=True):
                     p_df = progress_df[progress_df['Name'] == p_name].reset_index(drop=True)
-                    st.dataframe(p_df.drop(columns=['Name']), hide_index=True, use_container_width=True)
+                    st.dataframe(p_df.drop(columns=['Name']), hide_index=True, width="stretch")
         else:
             st.sidebar.info(t("daily_no_goals_match"))
     else:
@@ -317,7 +317,7 @@ if not valid_df.empty:
             for m in sorted(ao5_df['Mode'].unique()):
                 st.subheader(t("ao5_mode", mode=m))
                 m_ao5_df = ao5_df[ao5_df['Mode'] == m].sort_values(by='Name').reset_index(drop=True)
-                st.dataframe(m_ao5_df[['Name', 'Ao5']], hide_index=True, use_container_width=True)
+                st.dataframe(m_ao5_df[['Name', 'Ao5']], hide_index=True, width="stretch")
     else:
         st.sidebar.write(t("ao5_need5"))
 else:
@@ -337,7 +337,7 @@ if not valid_df.empty:
         for m in sorted(pb_df['Mode'].unique()):
             st.subheader(t("pb_mode", mode=m))
             m_df = pb_df[pb_df['Mode'] == m].sort_values(by='Name').reset_index(drop=True)
-            st.dataframe(m_df[['Name', 'Time', 'Date']], hide_index=True, use_container_width=True)
+            st.dataframe(m_df[['Name', 'Time', 'Date']], hide_index=True, width="stretch")
 else:
     st.sidebar.write(t("pb_no_records"))
 
@@ -375,6 +375,22 @@ def input_section():
         placeholder="0.000",
         key=f"time_input_{st.session_state.time_input_key}"
     )
+
+    # Inject JS to set inputmode="decimal" on the text input for iOS numeric keypad
+    # This is one-way (Python→JS) which components.html fully supports
+    components.html("""
+    <script>
+    (function() {
+        const inputs = window.parent.document.querySelectorAll('input[type="text"]');
+        inputs.forEach(function(input) {
+            if (input.placeholder === '0.000') {
+                input.inputMode = 'decimal';
+                input.pattern = '[0-9]*[.]?[0-9]*';
+            }
+        });
+    })();
+    </script>
+    """, height=0)
 
     # Parse the entered value
     try:
@@ -440,7 +456,7 @@ if not df.empty:
         today_records['Time'] = today_records.apply(
             lambda row: f"❌ {row['Time']:.3f}s (DNF)" if row.get('IsScratch', False) else f"{row['Time']:.3f}s", axis=1
         )
-        st.dataframe(today_records[['Timestamp', 'Name', 'Mode', 'Time']], use_container_width=True, hide_index=True)
+        st.dataframe(today_records[['Timestamp', 'Name', 'Mode', 'Time']], width="stretch", hide_index=True)
     
     # --- Past records: grouped summary by date + mode ---
     past_records = recent_df[recent_df['Date'] != today_str].copy()
@@ -451,8 +467,9 @@ if not df.empty:
                 'DNF': int(g['IsScratch'].sum()),
                 t('col_fastest'): f"{g.loc[~g['IsScratch'], 'Time'].min():.3f}s" if (~g['IsScratch']).any() else '-',
                 t('col_players'): ', '.join(g['Name'].unique()),
-            })
+            }),
+            include_groups=False
         ).sort_index(ascending=False).reset_index().rename(columns={'Date': t('col_date'), 'Mode': t('col_mode')})
         
         st.markdown(f"### {t('records_past')}")
-        st.dataframe(grouped_dates, use_container_width=True, hide_index=True)
+        st.dataframe(grouped_dates, width="stretch", hide_index=True)
