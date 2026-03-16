@@ -446,7 +446,13 @@ def input_section():
     if submit_success or submit_dnf:
         is_scratch = submit_dnf
         
-        if time_val is None or time_val <= 0:
+        # Safely convert the custom component's return value to a float
+        try:
+            parsed_time = float(time_val) if time_val is not None else 0.0
+        except ValueError:
+            parsed_time = 0.0
+        
+        if parsed_time <= 0:
             st.error(t("err_invalid_time"))
         else:
             timestamp_str = datetime.now(TIMEZONE).strftime("%Y-%m-%d %H:%M:%S")
@@ -456,13 +462,13 @@ def input_section():
                 ws = conn.client._client.open_by_url(url).worksheet("Data")
 
                 safe_mode = f"'{mode}" if mode in ["3-3-3", "3-6-3"] else mode
-                row_data = [timestamp_str, name, safe_mode, time_val, is_scratch]
+                row_data = [timestamp_str, name, safe_mode, parsed_time, is_scratch]
                 ws.append_row(row_data, table_range="A1", value_input_option="USER_ENTERED")
 
                 if is_scratch:
-                    st.warning(t("msg_dnf", name=name, mode=mode, time=time_val))
+                    st.warning(t("msg_dnf", name=name, mode=mode, time=parsed_time))
                 else:
-                    st.success(t("msg_success", name=name, mode=mode, time=time_val))
+                    st.success(t("msg_success", name=name, mode=mode, time=parsed_time))
 
                 st.session_state.last_name = name
                 st.session_state.last_mode = mode
