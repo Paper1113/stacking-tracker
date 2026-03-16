@@ -4,6 +4,15 @@ import pandas as pd
 from datetime import datetime
 from zoneinfo import ZoneInfo
 import streamlit.components.v1 as components
+import os
+
+_decimal_input_func = components.declare_component(
+    "decimal_input",
+    path=os.path.join(os.path.dirname(__file__), "decimal_input")
+)
+
+def decimal_input(key=None):
+    return _decimal_input_func(key=key, default=None)
 
 # --- Constants ---
 TIMEZONE = ZoneInfo("Asia/Hong_Kong")
@@ -364,21 +373,13 @@ def input_section():
     with c2:
         mode = st.radio(t("input_mode"), AVAILABLE_MODES, index=mode_idx, horizontal=True)
 
-    # Use st.number_input with value=None for an empty default field
-    # On iOS, <input type="number"> natively triggers the numeric keypad
+    # We use a custom static component for the decimal input on iOS
+    # because st.number_input sometimes fails to trigger the numeric keypad with a decimal.
     if 'time_input_key' not in st.session_state:
         st.session_state.time_input_key = 0
 
-    time_val = st.number_input(
-        t("input_time"),
-        min_value=0.001,
-        max_value=120.0,
-        value=None,
-        step=0.001,
-        format="%.3f",
-        placeholder="0.000",
-        key=f"time_input_{st.session_state.time_input_key}"
-    )
+    st.markdown(f"<div style='margin-bottom: 5px; font-size: 14px; color: #31333F;'>{t('input_time')}</div>", unsafe_allow_html=True)
+    time_val = decimal_input(key=f"time_input_{st.session_state.time_input_key}")
 
     st.write("")
 
