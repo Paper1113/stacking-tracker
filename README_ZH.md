@@ -11,6 +11,11 @@
 - 根據 Google Sheets `Goals` 分頁設定的目標秒數，即時計算成功次數
 - 每位選手獨立顯示進度
 
+### ⚡ 快速記錄模式 (批次同步)
+- 專為極速連續接戰（3-3-3 項目）設計的選用模式
+- 練習成績先暫存於本地「待上傳記錄」池，完全無網絡延遲
+- 一鍵將所有暫存紀錄批次同步至雲端（使用高效能 `append_rows` 優化）
+
 ### 📊 Ao5 (Average of 5)
 - 自動計算最近 5 次有效成績的平均值
 - 去掉最快與最慢各一次，取中間三次平均（WSSA 標準）
@@ -113,5 +118,6 @@ stacking-tracker/
 ├── .gitignore          # Git 忽略規則
 ├── .streamlit/
 │   └── secrets.toml    # Google Sheets 連線設定 (不上傳)
-└── README.md
+├── README.md           # 英文說明文檔
+└── README_ZH.md        # 中文說明文檔
 ```

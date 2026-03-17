@@ -11,6 +11,11 @@ A lightweight practice logging app built for Sport Stacking enthusiasts and pare
 - Goals are configured per player/mode via a Google Sheets `Goals` worksheet
 - Each player's progress is displayed independently
 
+### ⚡ Fast Mode (Batch Sync)
+- Opt-in toggle specifically for 3-3-3 mode to support rapid, back-to-back attempts
+- Temporarily saves records locally to a pending pool without network delays
+- Batch uploads all pending records to Google Sheets with a single click (uses `append_rows` for extreme efficiency)
+
 ### 📊 Average of 5 (Ao5)
 - Calculates the average of the last 5 valid attempts
 - Drops the best and worst times, averages the middle 3 (WSSA standard)
