@@ -35,11 +35,13 @@ TRANSLATIONS = {
         "col_strict_rate": "嚴格達標率",
         "col_lenient_rate": "寬鬆達標率",
         "col_target": "目標",
+        "ao5_header": "📊 平均 5 次 (Ao5)",
         "ao5_expander": "📊 最近 5 次平均 (Ao5)",
         "ao5_desc": "*去掉最快與最慢，取中間三次平均*",
         "ao5_mode": "📍 項目: {mode}",
         "ao5_need5": "📊 Ao5: 📌 選手需喺單一項目累積 5 次成績才會顯示",
         "ao5_no_records": "📊 Ao5: 暫無紀錄",
+        "pb_header": "🏆 個人最佳 (PB)",
         "pb_expander": "🏆 個人最佳 (PB)",
         "pb_mode": "📍 項目: {mode}",
         "pb_no_records": "🏆 個人最佳 (PB): 暫無紀錄",
@@ -75,11 +77,13 @@ TRANSLATIONS = {
         "col_strict_rate": "Strict Rate",
         "col_lenient_rate": "Lenient Rate",
         "col_target": "Target",
+        "ao5_header": "📊 Average of 5 (Ao5)",
         "ao5_expander": "📊 Average of 5 (Ao5)",
         "ao5_desc": "*Drop best & worst, average the middle 3*",
         "ao5_mode": "📍 Mode: {mode}",
         "ao5_need5": "📊 Ao5: 📌 Need at least 5 attempts in a single mode to display",
         "ao5_no_records": "📊 Ao5: No records",
+        "pb_header": "🏆 Personal Best (PB)",
         "pb_expander": "🏆 Personal Best (PB)",
         "pb_mode": "📍 Mode: {mode}",
         "pb_no_records": "🏆 Personal Best (PB): No records",
@@ -242,33 +246,52 @@ if 'last_name' in st.session_state and st.session_state.last_name not in names:
     st.session_state.last_name = names[0]
 
 # ============================================================
-# Sidebar: 📈 Daily Practice Progress
+# 📊 Stats Tabs (Daily/Ao5/PB) - Optional view
 # ============================================================
-st.sidebar.header(t("daily_header"))
+if not valid_df.empty:
+    valid_df_sorted = valid_df.sort_values(by='Timestamp')
 
+    def calculate_ao5(group):
+        """Calculate Ao5: drop best and worst from last 5, average middle 3."""
+        if len(group) >= 5:
+            last_5 = group.tail(5)['Time'].tolist()
+            last_5.sort()
+            return sum(last_5[1:4]) / 3
+        return None
+
+    # Prepare Ao5 data
+    ao5_results = []
+    for (a_name, a_mode), group in valid_df_sorted.groupby(['Name', 'Mode']):
+        ao5 = calculate_ao5(group)
+        if ao5 is not None:
+            ao5_results.append({'Name': a_name, 'Mode': a_mode, 'Ao5': ao5})
+    ao5_df = pd.DataFrame(ao5_results) if ao5_results else pd.DataFrame()
+
+    # Prepare PB data
+    idx = valid_df.groupby(['Name', 'Mode'])['Time'].idxmin()
+    pb_df = valid_df.loc[idx, ['Name', 'Mode', 'Time', 'Timestamp']].copy()
+    pb_df['Date'] = pd.to_datetime(pb_df['Timestamp'], errors='coerce').dt.strftime('%Y-%m-%d')
+    pb_df['Time'] = pb_df['Time'].map('{:,.3f}s'.format)
+
+# Prepare Daily Progress data
 if not df.empty:
     today_str = datetime.now(TIMEZONE).strftime("%Y-%m-%d")
     df['DateStr'] = pd.to_datetime(df['Timestamp'], errors='coerce').dt.strftime('%Y-%m-%d')
     today_df = df[df['DateStr'] == today_str].copy()
-    
+
+    progress_data = []
     if not today_df.empty and not goals_df.empty:
-        progress_data = []
-        
         for (p_name, p_mode), group in today_df.groupby(['Name', 'Mode']):
             target = goals_df[((goals_df['Name'] == p_name) | (goals_df['Name'] == 'All')) & (goals_df['Mode'] == p_mode)]
-            
             if not target.empty:
                 target_time = target.sort_values(by='Name', ascending=False).iloc[0]['TargetTime']
-                
                 total_count = len(group)
                 dnf_count = len(group[group['IsScratch']])
                 valid_count = total_count - dnf_count
                 valid_attempts = group[~group['IsScratch']]
                 success_count = len(valid_attempts[pd.to_numeric(valid_attempts['Time'], errors='coerce') <= target_time])
-                
                 overall_rate = (success_count / total_count * 100) if total_count > 0 else 0.0
                 valid_rate = (success_count / valid_count * 100) if valid_count > 0 else 0.0
-                    
                 progress_data.append({
                     "Name": p_name,
                     t("col_mode"): p_mode,
@@ -278,77 +301,48 @@ if not df.empty:
                     t("col_lenient_rate"): f"{valid_rate:.1f}%",
                     t("col_target"): f"≤{target_time}s"
                 })
-                
-        if progress_data:
-            progress_df = pd.DataFrame(progress_data)
-            for p_name in sorted(progress_df['Name'].unique()):
-                with st.sidebar.expander(t("daily_expander", name=p_name), expanded=True):
-                    p_df = progress_df[progress_df['Name'] == p_name].reset_index(drop=True)
-                    st.dataframe(p_df.drop(columns=['Name']), hide_index=True, width="stretch")
-        else:
-            st.sidebar.info(t("daily_no_goals_match"))
-    else:
-        if goals_df.empty:
-            st.sidebar.info(t("daily_no_goals_sheet"))
-        else:
-            st.sidebar.info(t("daily_no_records"))
+    progress_df = pd.DataFrame(progress_data) if progress_data else pd.DataFrame()
 else:
-    st.sidebar.info(t("daily_no_records"))
+    progress_df = pd.DataFrame()
 
-# ============================================================
-# Sidebar: 📊 Average of 5 (Ao5)
-# ============================================================
-st.sidebar.divider()
+# Create tabs for stats
+tab_daily, tab_ao5, tab_pb = st.tabs([t("daily_header"), t("ao5_header"), t("pb_header")])
 
-if not valid_df.empty:
-    valid_df_sorted = valid_df.sort_values(by='Timestamp')
-    
-    def calculate_ao5(group):
-        """Calculate Ao5: drop best and worst from last 5, average middle 3."""
-        if len(group) >= 5:
-            last_5 = group.tail(5)['Time'].tolist()
-            last_5.sort()
-            return sum(last_5[1:4]) / 3
-        return None
-        
-    ao5_results = []
-    for (a_name, a_mode), group in valid_df_sorted.groupby(['Name', 'Mode']):
-        ao5 = calculate_ao5(group)
-        if ao5 is not None:
-            ao5_results.append({'Name': a_name, 'Mode': a_mode, 'Ao5': ao5})
-            
-    if ao5_results:
-        ao5_df = pd.DataFrame(ao5_results)
+with tab_daily:
+    if not progress_df.empty:
+        for p_name in sorted(progress_df['Name'].unique()):
+            with st.expander(t("daily_expander", name=p_name), expanded=True):
+                p_df = progress_df[progress_df['Name'] == p_name].reset_index(drop=True)
+                st.dataframe(p_df.drop(columns=['Name']), hide_index=True, use_container_width=True)
+    else:
+        if df.empty:
+            st.info(t("daily_no_records"))
+        elif goals_df.empty:
+            st.info(t("daily_no_goals_sheet"))
+        else:
+            st.info(t("daily_no_goals_match"))
+
+with tab_ao5:
+    if not ao5_df.empty:
         ao5_df['Ao5'] = ao5_df['Ao5'].map('{:,.3f}s'.format)
-        
-        with st.sidebar.expander(t("ao5_expander"), expanded=True):
-            st.markdown(t("ao5_desc"))
-            for m in sorted(ao5_df['Mode'].unique()):
-                st.subheader(t("ao5_mode", mode=m))
-                m_ao5_df = ao5_df[ao5_df['Mode'] == m].sort_values(by='Name').reset_index(drop=True)
-                st.dataframe(m_ao5_df[['Name', 'Ao5']], hide_index=True, width="stretch")
+        st.markdown(t("ao5_desc"))
+        for m in sorted(ao5_df['Mode'].unique()):
+            st.subheader(t("ao5_mode", mode=m))
+            m_ao5_df = ao5_df[ao5_df['Mode'] == m].sort_values(by='Name').reset_index(drop=True)
+            st.dataframe(m_ao5_df[['Name', 'Ao5']], hide_index=True, use_container_width=True)
     else:
-        st.sidebar.write(t("ao5_need5"))
-else:
-    st.sidebar.write(t("ao5_no_records"))
+        st.write(t("ao5_need5"))
 
-# ============================================================
-# Sidebar: 🏆 Personal Best (PB)
-# ============================================================
-st.sidebar.divider()
-if not valid_df.empty:
-    idx = valid_df.groupby(['Name', 'Mode'])['Time'].idxmin()
-    pb_df = valid_df.loc[idx, ['Name', 'Mode', 'Time', 'Timestamp']].copy()
-    pb_df['Date'] = pd.to_datetime(pb_df['Timestamp'], errors='coerce').dt.strftime('%Y-%m-%d')
-    pb_df['Time'] = pb_df['Time'].map('{:,.3f}s'.format)
-
-    with st.sidebar.expander(t("pb_expander"), expanded=True):
+with tab_pb:
+    if not pb_df.empty:
         for m in sorted(pb_df['Mode'].unique()):
             st.subheader(t("pb_mode", mode=m))
             m_df = pb_df[pb_df['Mode'] == m].sort_values(by='Name').reset_index(drop=True)
-            st.dataframe(m_df[['Name', 'Time', 'Date']], hide_index=True, width="stretch")
-else:
-    st.sidebar.write(t("pb_no_records"))
+            st.dataframe(m_df[['Name', 'Time', 'Date']], hide_index=True, use_container_width=True)
+    else:
+        st.write(t("pb_no_records"))
+
+st.divider()
 
 # ============================================================
 # Main Input Section (wrapped in @st.fragment to prevent full-page reruns)
