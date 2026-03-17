@@ -94,7 +94,6 @@ def get_current_timestamp():
     """Return the current timestamp string."""
     return datetime.now(TIMEZONE).strftime("%Y-%m-%d %H:%M:%S")
 
-@retry(stop=stop_after_attempt(3), wait=wait_fixed(1))
 def save_record_to_cloud(conn, timestamp_str, name, mode, time_val, is_scratch):
     """Save a single record directly to Google Sheets."""
     url = st.secrets.connections.gsheets.spreadsheet
@@ -105,7 +104,6 @@ def save_record_to_cloud(conn, timestamp_str, name, mode, time_val, is_scratch):
     row_data = [timestamp_str, name, safe_mode, time_val, is_scratch]
     ws.append_row(row_data, table_range="A1", value_input_option="USER_ENTERED")
 
-@retry(stop=stop_after_attempt(3), wait=wait_fixed(1))
 def sync_temp_logs_to_cloud(conn, temp_logs):
     """Sync an array of temp logs to Google Sheets using batch append_rows."""
     url = st.secrets.connections.gsheets.spreadsheet
