@@ -257,16 +257,18 @@ with tab_pb:
             # Show the trend chart
             st.line_chart(chart_data)
             
-            # Show the absolute best PB table below the chart
-            st.markdown("##### 🏆 Current PB")
+            # Show the top 5 PB table below the chart
+            st.markdown("##### 🏆 Top 5 PB")
             abs_pb_idx = m_df.groupby('Name')['Time'].idxmin()
-            abs_pb_df = m_df.loc[abs_pb_idx, ['Name', 'Time', 'Date']].sort_values(by='Name').reset_index(drop=True)
+            abs_pb_df = m_df.loc[abs_pb_idx, ['Name', 'Time', 'Date']].copy()
+            top_pb_df = abs_pb_df.sort_values(by='Time').head(5).reset_index(drop=True)
+            top_pb_df.insert(0, "Rank", range(1, len(top_pb_df) + 1))
             
             # Safely format Time column
-            abs_pb_df['Time'] = abs_pb_df['Time'].apply(
+            top_pb_df['Time'] = top_pb_df['Time'].apply(
                 lambda x: f"{float(x):.3f}s" if pd.notnull(x) and str(x).replace('.', '', 1).isdigit() else str(x)
             )
-            st.dataframe(abs_pb_df, hide_index=True, width="stretch")
+            st.dataframe(top_pb_df, hide_index=True, width="stretch")
             st.divider()
     else:
         st.write(t("pb_no_records"))
