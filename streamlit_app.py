@@ -255,10 +255,29 @@ with tab_ao5:
 
 with tab_pb:
     if not pb_df.empty:
+        # Convert to Plotly-ready or Streamlit-ready format
+        # We need a dataframe where index is Date, columns are Players, values are Times
         for m in sorted(pb_df['Mode'].unique()):
             st.subheader(t("pb_mode", mode=m))
-            m_df = pb_df[pb_df['Mode'] == m].sort_values(by='Name').reset_index(drop=True)
-            st.dataframe(m_df[['Name', 'Time', 'Date']], hide_index=True, width="stretch")
+            m_df = pb_df[pb_df['Mode'] == m].copy()
+            
+            # Pivot the data for line chart: Date as index, Names as columns
+            chart_data = m_df.pivot(index='Date', columns='Name', values='Time')
+            
+            # Show the trend chart
+            st.line_chart(chart_data)
+            
+            # Show the absolute best PB table below the chart
+            st.markdown("##### 🏆 Current PB")
+            abs_pb_idx = m_df.groupby('Name')['Time'].idxmin()
+            abs_pb_df = m_df.loc[abs_pb_idx, ['Name', 'Time', 'Date']].sort_values(by='Name').reset_index(drop=True)
+            
+            # Safely format Time column
+            abs_pb_df['Time'] = abs_pb_df['Time'].apply(
+                lambda x: f"{float(x):.3f}s" if pd.notnull(x) and str(x).replace('.', '', 1).isdigit() else str(x)
+            )
+            st.dataframe(abs_pb_df, hide_index=True, width="stretch")
+            st.divider()
     else:
         st.write(t("pb_no_records"))
 
@@ -278,7 +297,9 @@ if not df.empty:
     if not today_records.empty:
         st.markdown(f"### {t('records_today', date=today_str)}")
         today_records['Time'] = today_records.apply(
-            lambda row: f"❌ {row['Time']:.3f}s (DNF)" if row.get('IsScratch', False) else f"{row['Time']:.3f}s", axis=1
+            lambda row: f"❌ {float(row['Time']):.3f}s (DNF)" if row.get('IsScratch', False) and pd.notnull(row['Time']) 
+                        else (f"{float(row['Time']):.3f}s" if pd.notnull(row['Time']) else "-"), 
+            axis=1
         )
         st.dataframe(today_records[['Timestamp', 'Name', 'Mode', 'Time']], width="stretch", hide_index=True)
     
