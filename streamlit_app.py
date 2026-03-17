@@ -116,19 +116,9 @@ def input_section():
         st.session_state.time_input_key = 0
 
     st.markdown(f"<div style='margin-bottom: 5px; font-size: 14px;'>{t('input_time')}</div>", unsafe_allow_html=True)
-    time_str = st.text_input(
-        t("input_time"),
-        value="",
-        key=f"time_text_input_{st.session_state.time_input_key}",
-        label_visibility="collapsed",
-        placeholder="0.000"
+    time_val = decimal_input(
+        key=f"time_decimal_input_{st.session_state.time_input_key}"
     )
-
-    # Convert string to float
-    try:
-        time_val = float(time_str) if time_str else None
-    except ValueError:
-        time_val = None
 
     st.write("")
 
