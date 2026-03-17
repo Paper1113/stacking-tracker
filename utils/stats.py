@@ -26,10 +26,16 @@ def prepare_ao5_data(valid_df_sorted: pd.DataFrame) -> pd.DataFrame:
 def prepare_pb_data(valid_df: pd.DataFrame) -> pd.DataFrame:
     """Prepare PB DataFrame."""
     if not valid_df.empty:
-        idx = valid_df.groupby(['Name', 'Mode'])['Time'].idxmin()
-        pb_df = valid_df.loc[idx, ['Name', 'Mode', 'Time', 'Timestamp']].copy()
-        pb_df['Date'] = pd.to_datetime(pb_df['Timestamp'], errors='coerce').dt.strftime('%Y-%m-%d')
-        pb_df['Time'] = pb_df['Time'].map('{:,.3f}s'.format)
+        # Instead of single global PB, we return the fastest time *per day* for the trend chart
+        valid_df_copy = valid_df.copy()
+        valid_df_copy['Date'] = pd.to_datetime(valid_df_copy['Timestamp'], errors='coerce').dt.strftime('%Y-%m-%d')
+        
+        # Group by Name, Mode, and Date, then find the minimum time for each day
+        idx = valid_df_copy.groupby(['Name', 'Mode', 'Date'])['Time'].idxmin()
+        pb_df = valid_df_copy.loc[idx, ['Name', 'Mode', 'Time', 'Date']].copy()
+        
+        # Sort by Date chronologically so the line chart draws correctly left-to-right
+        pb_df = pb_df.sort_values(by=['Name', 'Mode', 'Date']).reset_index(drop=True)
         return pb_df
     return pd.DataFrame()
 

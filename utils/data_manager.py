@@ -3,6 +3,7 @@ from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 from datetime import datetime
 from zoneinfo import ZoneInfo
+from tenacity import retry, stop_after_attempt, wait_fixed
 from utils.i18n import t, DATA_TTL, DEFAULT_PLAYERS
 
 TIMEZONE = ZoneInfo("Asia/Hong_Kong")
@@ -11,6 +12,10 @@ def get_connection():
     """Establish and return the Google Sheets connection."""
     return st.connection("gsheets", type=GSheetsConnection)
 
+@retry(stop=stop_after_attempt(3), wait=wait_fixed(1))
+def _read_with_retry(conn, worksheet):
+    return conn.read(worksheet=worksheet, ttl=DATA_TTL)
+
 def load_data(conn):
     """
     Read data from the "Data" worksheet.
@@ -18,7 +23,7 @@ def load_data(conn):
     valid_df excludes scratched (DNF) records and rows with invalid times.
     """
     try:
-        df = conn.read(worksheet="Data", ttl=DATA_TTL)
+        df = _read_with_retry(conn, "Data")
 
         # Strip leading single quotes from Mode
         if "Mode" in df.columns:
@@ -48,7 +53,7 @@ def load_players(conn, default_names_from_data):
     Falls back to names found in Data, or DEFAULT_PLAYERS.
     """
     try:
-        players_df = conn.read(worksheet="Players", ttl=DATA_TTL)
+        players_df = _read_with_retry(conn, "Players")
         if "Name" in players_df.columns:
             names = players_df["Name"].dropna().astype(str).str.strip().tolist()
         else:
@@ -72,7 +77,7 @@ def load_goals(conn):
     """
     goals_df = pd.DataFrame(columns=["Name", "Mode", "TargetTime"])
     try:
-        g_df = conn.read(worksheet="Goals", ttl=DATA_TTL)
+        g_df = _read_with_retry(conn, "Goals")
         if not g_df.empty and {"Mode", "TargetTime"}.issubset(g_df.columns):
             if "Name" not in g_df.columns:
                 g_df["Name"] = "All"
