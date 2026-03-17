@@ -11,8 +11,8 @@ _decimal_input_func = components.declare_component(
     path=os.path.join(os.path.dirname(__file__), "decimal_input")
 )
 
-def decimal_input(key=None):
-    return _decimal_input_func(key=key, default=None)
+def decimal_input(key=None, value=None):
+    return _decimal_input_func(key=key, default=value)
 
 # --- Constants ---
 TIMEZONE = ZoneInfo("Asia/Hong_Kong")
@@ -51,6 +51,15 @@ TRANSLATIONS = {
         "input_time": "⏳ 成績 (秒)",
         "btn_success": "✅ 成功 Success",
         "btn_dnf": "🔴 失誤 DNF",
+        "temp_pool": "📥 待上傳記錄",
+        "btn_sync": "💾 同步到雲端",
+        "btn_clear": "🗑️ 清空",
+        "msg_added": "已暫存 {time}s",
+        "msg_synced": "✅ 所有數據已同步至雲端！",
+        "sync_fail": "同步失敗：{err}",
+        "syncing": "同步中...",
+        "fast_mode": "⚡ 快速記錄模式",
+        "fast_mode_desc": "先暫存本地，之後再同步",
         "err_invalid_time": "時間無效！(不可為空或 0)",
         "msg_dnf": "❌ 已紀錄失誤 (DNF)：{name} - {mode} - {time}s",
         "msg_success": "✅ 已紀錄：{name} - {mode} - {time}s",
@@ -93,6 +102,15 @@ TRANSLATIONS = {
         "input_time": "⏳ Time (sec)",
         "btn_success": "✅ Success",
         "btn_dnf": "🔴 DNF",
+        "temp_pool": "📥 Pending Records",
+        "btn_sync": "💾 Sync to Cloud",
+        "btn_clear": "🗑️ Clear",
+        "msg_added": "Added {time}s to temp",
+        "msg_synced": "✅ All data synced to cloud!",
+        "sync_fail": "Sync failed: {err}",
+        "syncing": "Syncing...",
+        "fast_mode": "⚡ Fast Mode",
+        "fast_mode_desc": "Save locally first, sync later",
         "err_invalid_time": "Invalid time! (cannot be empty or 0)",
         "msg_dnf": "❌ Recorded DNF: {name} - {mode} - {time}s",
         "msg_success": "✅ Recorded: {name} - {mode} - {time}s",
@@ -247,10 +265,15 @@ if 'last_name' in st.session_state and st.session_state.last_name not in names:
 
 
 # ============================================================
-# Main Input Section (wrapped in @st.fragment to prevent full-page reruns)
+# Main Input Section (with optional fast mode for 3-3-3)
 # ============================================================
-@st.fragment
 def input_section():
+    # Initialize temp logs pool and fast mode state
+    if 'temp_logs' not in st.session_state:
+        st.session_state.temp_logs = []
+    if 'fast_mode' not in st.session_state:
+        st.session_state.fast_mode = False
+
     if 'last_name' not in st.session_state:
         st.session_state.last_name = names[0]
     if 'last_mode' not in st.session_state:
@@ -269,13 +292,32 @@ def input_section():
     with c2:
         mode = st.radio(t("input_mode"), AVAILABLE_MODES, index=mode_idx, horizontal=True)
 
-    # We use a custom static component for the decimal input on iOS
-    # because st.number_input sometimes fails to trigger the numeric keypad with a decimal.
+    # Show fast mode toggle only for 3-3-3
+    if mode == "3-3-3":
+        fast_mode = st.toggle(t("fast_mode"), help=t("fast_mode_desc"), key="fast_mode_toggle")
+        st.session_state.fast_mode = fast_mode
+    else:
+        st.session_state.fast_mode = False
+
+    # Use st.text_input with dynamic key to allow clearing
+    # Key changes when we want to reset the input
     if 'time_input_key' not in st.session_state:
         st.session_state.time_input_key = 0
 
     st.markdown(f"<div style='margin-bottom: 5px; font-size: 14px;'>{t('input_time')}</div>", unsafe_allow_html=True)
-    time_val = decimal_input(key=f"time_input_{st.session_state.time_input_key}")
+    time_str = st.text_input(
+        t("input_time"),
+        value="",
+        key=f"time_text_input_{st.session_state.time_input_key}",
+        label_visibility="collapsed",
+        placeholder="0.000"
+    )
+
+    # Convert string to float
+    try:
+        time_val = float(time_str) if time_str else None
+    except ValueError:
+        time_val = None
 
     st.write("")
 
@@ -287,33 +329,84 @@ def input_section():
 
     if submit_success or submit_dnf:
         is_scratch = submit_dnf
+        use_fast_mode = st.session_state.fast_mode
 
         if time_val is None or time_val <= 0:
             st.error(t("err_invalid_time"))
         else:
             timestamp_str = datetime.now(TIMEZONE).strftime("%Y-%m-%d %H:%M:%S")
+            safe_mode = f"'{mode}" if mode in ["3-3-3", "3-6-3"] else mode
 
-            try:
-                url = st.secrets.connections.gsheets.spreadsheet
-                ws = conn.client._client.open_by_url(url).worksheet("Data")
+            # Save to temp pool or upload to cloud
+            if use_fast_mode:
+                # Save to temp pool (instant, no network call)
+                st.session_state.temp_logs.append({
+                    "Timestamp": timestamp_str,
+                    "Name": name,
+                    "Mode": mode,
+                    "Time": time_val,
+                    "IsScratch": is_scratch
+                })
+                st.toast(t("msg_added", time=f"{time_val:.3f}"), icon="⏱️")
+            else:
+                # Immediate upload to cloud (original behavior)
+                try:
+                    url = st.secrets.connections.gsheets.spreadsheet
+                    ws = conn.client._client.open_by_url(url).worksheet("Data")
+                    row_data = [timestamp_str, name, safe_mode, time_val, is_scratch]
+                    ws.append_row(row_data, table_range="A1", value_input_option="USER_ENTERED")
 
-                safe_mode = f"'{mode}" if mode in ["3-3-3", "3-6-3"] else mode
-                row_data = [timestamp_str, name, safe_mode, time_val, is_scratch]
-                ws.append_row(row_data, table_range="A1", value_input_option="USER_ENTERED")
+                    if is_scratch:
+                        st.warning(t("msg_dnf", name=name, mode=mode, time=time_val))
+                    else:
+                        st.success(t("msg_success", name=name, mode=mode, time=time_val))
 
-                if is_scratch:
-                    st.warning(t("msg_dnf", name=name, mode=mode, time=time_val))
-                else:
-                    st.success(t("msg_success", name=name, mode=mode, time=time_val))
+                    st.cache_data.clear()
+                except Exception as e:
+                    st.error(t("err_save_fail", err=e))
 
-                st.session_state.last_name = name
-                st.session_state.last_mode = mode
-                st.session_state.time_input_key += 1
+            st.session_state.last_name = name
+            st.session_state.last_mode = mode
+            # Clear time input by incrementing the key (creates new input)
+            st.session_state.time_input_key += 1
+            st.rerun()
 
-                st.cache_data.clear()
+    # --- Temp Pool Display & Sync (only when fast mode is used) ---
+    if st.session_state.temp_logs and st.session_state.fast_mode:
+        st.divider()
+        st.subheader(t("temp_pool"))
+
+        temp_df = pd.DataFrame(st.session_state.temp_logs)
+        temp_df['TimeDisplay'] = temp_df.apply(
+            lambda row: f"❌ {row['Time']:.3f}s" if row.get('IsScratch', False) else f"{row['Time']:.3f}s", axis=1
+        )
+        st.dataframe(temp_df[['Name', 'Mode', 'TimeDisplay']], hide_index=True, width="stretch")
+
+        sync_col, clear_col = st.columns(2)
+        with sync_col:
+            if st.button(t("btn_sync"), type="primary", use_container_width=True):
+                try:
+                    with st.spinner(t("syncing")):
+                        url = st.secrets.connections.gsheets.spreadsheet
+                        ws = conn.client._client.open_by_url(url).worksheet("Data")
+
+                        rows_data = [
+                            [log["Timestamp"], log["Name"], f"'{log['Mode']}" if log["Mode"] in ["3-3-3", "3-6-3"] else log["Mode"], log["Time"], log["IsScratch"]]
+                            for log in st.session_state.temp_logs
+                        ]
+                        ws.append_rows(rows_data, table_range="A1", value_input_option="USER_ENTERED")
+
+                        st.session_state.temp_logs = []
+                        st.success(t("msg_synced"))
+                        st.cache_data.clear()
+                        st.rerun()
+                except Exception as e:
+                    st.error(t("sync_fail", err=e))
+
+        with clear_col:
+            if st.button(t("btn_clear"), use_container_width=True):
+                st.session_state.temp_logs = []
                 st.rerun()
-            except Exception as e:
-                st.error(t("err_save_fail", err=e))
 
 input_section()
 
@@ -389,7 +482,7 @@ with tab_daily:
         for p_name in sorted(progress_df['Name'].unique()):
             with st.expander(t("daily_expander", name=p_name), expanded=True):
                 p_df = progress_df[progress_df['Name'] == p_name].reset_index(drop=True)
-                st.dataframe(p_df.drop(columns=['Name']), hide_index=True, use_container_width=True)
+                st.dataframe(p_df.drop(columns=['Name']), hide_index=True, width="stretch")
     else:
         if df.empty:
             st.info(t("daily_no_records"))
@@ -405,7 +498,7 @@ with tab_ao5:
         for m in sorted(ao5_df['Mode'].unique()):
             st.subheader(t("ao5_mode", mode=m))
             m_ao5_df = ao5_df[ao5_df['Mode'] == m].sort_values(by='Name').reset_index(drop=True)
-            st.dataframe(m_ao5_df[['Name', 'Ao5']], hide_index=True, use_container_width=True)
+            st.dataframe(m_ao5_df[['Name', 'Ao5']], hide_index=True, width="stretch")
     else:
         st.write(t("ao5_need5"))
 
@@ -414,7 +507,7 @@ with tab_pb:
         for m in sorted(pb_df['Mode'].unique()):
             st.subheader(t("pb_mode", mode=m))
             m_df = pb_df[pb_df['Mode'] == m].sort_values(by='Name').reset_index(drop=True)
-            st.dataframe(m_df[['Name', 'Time', 'Date']], hide_index=True, use_container_width=True)
+            st.dataframe(m_df[['Name', 'Time', 'Date']], hide_index=True, width="stretch")
     else:
         st.write(t("pb_no_records"))
 
@@ -456,4 +549,4 @@ if not df.empty:
             ).sort_index(ascending=False).reset_index().rename(columns={'Date': t('col_date')})
 
             with st.expander(f"{mode}", expanded=False):
-                st.dataframe(grouped_by_date[[t('col_date'), t('col_total'), 'DNF', t('col_fastest'), t('col_players')]], hide_index=True, use_container_width=True)
+                st.dataframe(grouped_by_date[[t('col_date'), t('col_total'), 'DNF', t('col_fastest'), t('col_players')]], hide_index=True, width="stretch")
