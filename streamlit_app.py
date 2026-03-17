@@ -23,18 +23,8 @@ def decimal_input(key=None, value=None):
 # Page configuration (responsive layout for mobile)
 st.set_page_config(page_title="Stacking Tracker", layout="centered")
 
-# Language selector in sidebar
-LANG_OPTIONS = {"繁體中文": "zh-TW", "English": "en"}
-LANG_LABELS = list(LANG_OPTIONS.keys())
-current_lang_idx = LANG_LABELS.index("繁體中文") if st.session_state.lang == "zh-TW" else LANG_LABELS.index("English")
-
-selected_lang_label = st.sidebar.selectbox(
-    "🌐 語言 / Language",
-    LANG_LABELS,
-    index=current_lang_idx,
-    key="lang_selector"
-)
-st.session_state.lang = LANG_OPTIONS[selected_lang_label]
+# JS language detection setup
+setup_language_selector()
 
 # Add Manual Refresh Button
 st.sidebar.markdown("---")
