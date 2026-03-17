@@ -248,6 +248,10 @@ if 'last_name' in st.session_state and st.session_state.last_name not in names:
 # ============================================================
 # 📊 Stats Tabs (Daily/Ao5/PB) - Optional view
 # ============================================================
+# Initialize empty DataFrames in case valid_df is empty
+ao5_df = pd.DataFrame()
+pb_df = pd.DataFrame()
+
 if not valid_df.empty:
     valid_df_sorted = valid_df.sort_values(by='Timestamp')
 
