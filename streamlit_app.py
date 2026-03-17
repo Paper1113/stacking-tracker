@@ -57,6 +57,7 @@ TRANSLATIONS = {
         "msg_added": "已暫存 {time}s",
         "msg_synced": "✅ 所有數據已同步至雲端！",
         "sync_fail": "同步失敗：{err}",
+        "syncing": "同步中...",
         "fast_mode": "⚡ 快速記錄模式",
         "fast_mode_desc": "先暫存本地，之後再同步",
         "err_invalid_time": "時間無效！(不可為空或 0)",
@@ -107,6 +108,7 @@ TRANSLATIONS = {
         "msg_added": "Added {time}s to temp",
         "msg_synced": "✅ All data synced to cloud!",
         "sync_fail": "Sync failed: {err}",
+        "syncing": "Syncing...",
         "fast_mode": "⚡ Fast Mode",
         "fast_mode_desc": "Save locally first, sync later",
         "err_invalid_time": "Invalid time! (cannot be empty or 0)",
@@ -341,7 +343,7 @@ def input_section():
                 st.session_state.temp_logs.append({
                     "Timestamp": timestamp_str,
                     "Name": name,
-                    "Mode": safe_mode,
+                    "Mode": mode,
                     "Time": time_val,
                     "IsScratch": is_scratch
                 })
@@ -378,19 +380,21 @@ def input_section():
         temp_df['TimeDisplay'] = temp_df.apply(
             lambda row: f"❌ {row['Time']:.3f}s" if row.get('IsScratch', False) else f"{row['Time']:.3f}s", axis=1
         )
-        st.dataframe(temp_df[['Name', 'Mode', 'TimeDisplay']], hide_index=True, use_container_width=True)
+        st.dataframe(temp_df[['Name', 'Mode', 'TimeDisplay']], hide_index=True, width="stretch")
 
         sync_col, clear_col = st.columns(2)
         with sync_col:
             if st.button(t("btn_sync"), type="primary", use_container_width=True):
                 try:
-                    with st.spinner("同步中..."):
+                    with st.spinner(t("syncing")):
                         url = st.secrets.connections.gsheets.spreadsheet
                         ws = conn.client._client.open_by_url(url).worksheet("Data")
 
-                        for log in st.session_state.temp_logs:
-                            row_data = [log["Timestamp"], log["Name"], log["Mode"], log["Time"], log["IsScratch"]]
-                            ws.append_row(row_data, table_range="A1", value_input_option="USER_ENTERED")
+                        rows_data = [
+                            [log["Timestamp"], log["Name"], f"'{log['Mode']}" if log["Mode"] in ["3-3-3", "3-6-3"] else log["Mode"], log["Time"], log["IsScratch"]]
+                            for log in st.session_state.temp_logs
+                        ]
+                        ws.append_rows(rows_data, table_range="A1", value_input_option="USER_ENTERED")
 
                         st.session_state.temp_logs = []
                         st.success(t("msg_synced"))
@@ -478,7 +482,7 @@ with tab_daily:
         for p_name in sorted(progress_df['Name'].unique()):
             with st.expander(t("daily_expander", name=p_name), expanded=True):
                 p_df = progress_df[progress_df['Name'] == p_name].reset_index(drop=True)
-                st.dataframe(p_df.drop(columns=['Name']), hide_index=True, use_container_width=True)
+                st.dataframe(p_df.drop(columns=['Name']), hide_index=True, width="stretch")
     else:
         if df.empty:
             st.info(t("daily_no_records"))
@@ -494,7 +498,7 @@ with tab_ao5:
         for m in sorted(ao5_df['Mode'].unique()):
             st.subheader(t("ao5_mode", mode=m))
             m_ao5_df = ao5_df[ao5_df['Mode'] == m].sort_values(by='Name').reset_index(drop=True)
-            st.dataframe(m_ao5_df[['Name', 'Ao5']], hide_index=True, use_container_width=True)
+            st.dataframe(m_ao5_df[['Name', 'Ao5']], hide_index=True, width="stretch")
     else:
         st.write(t("ao5_need5"))
 
@@ -503,7 +507,7 @@ with tab_pb:
         for m in sorted(pb_df['Mode'].unique()):
             st.subheader(t("pb_mode", mode=m))
             m_df = pb_df[pb_df['Mode'] == m].sort_values(by='Name').reset_index(drop=True)
-            st.dataframe(m_df[['Name', 'Time', 'Date']], hide_index=True, use_container_width=True)
+            st.dataframe(m_df[['Name', 'Time', 'Date']], hide_index=True, width="stretch")
     else:
         st.write(t("pb_no_records"))
 
@@ -545,4 +549,4 @@ if not df.empty:
             ).sort_index(ascending=False).reset_index().rename(columns={'Date': t('col_date')})
 
             with st.expander(f"{mode}", expanded=False):
-                st.dataframe(grouped_by_date[[t('col_date'), t('col_total'), 'DNF', t('col_fastest'), t('col_players')]], hide_index=True, use_container_width=True)
+                st.dataframe(grouped_by_date[[t('col_date'), t('col_total'), 'DNF', t('col_fastest'), t('col_players')]], hide_index=True, width="stretch")
