@@ -348,6 +348,11 @@ def input_section():
                     "IsScratch": is_scratch
                 })
                 st.toast(t("msg_added", time=f"{time_val:.3f}"), icon="⏱️")
+                
+                st.session_state.last_name = name
+                st.session_state.last_mode = mode
+                st.session_state.time_input_key += 1
+                st.rerun()
             else:
                 # Immediate upload to cloud (original behavior)
                 try:
@@ -362,14 +367,14 @@ def input_section():
                         st.success(t("msg_success", name=name, mode=mode, time=time_val))
 
                     st.cache_data.clear()
+                    
+                    st.session_state.last_name = name
+                    st.session_state.last_mode = mode
+                    # Clear time input by incrementing the key (creates new input)
+                    st.session_state.time_input_key += 1
+                    st.rerun()
                 except Exception as e:
                     st.error(t("err_save_fail", err=e))
-
-            st.session_state.last_name = name
-            st.session_state.last_mode = mode
-            # Clear time input by incrementing the key (creates new input)
-            st.session_state.time_input_key += 1
-            st.rerun()
 
     # --- Temp Pool Display & Sync (only when fast mode is used) ---
     if st.session_state.temp_logs and st.session_state.fast_mode:
