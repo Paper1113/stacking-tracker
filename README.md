@@ -43,7 +43,7 @@ A lightweight practice logging app built for Sport Stacking enthusiasts and pare
 - Extra-large buttons (green for Success, red for DNF) — designed so even a 4-year-old can self-record
 - Optimized number input for mobile numeric keypad
 - Input fields auto-clear after each save
-- Uses `@st.fragment` to isolate the input section — switching player/mode won't reload the entire page
+- Uses a custom Streamlit component for mobile-friendly decimal input (iOS Safari numeric keypad with decimal)
 
 ### 📜 Records Overview
 - Today's records shown individually with full detail
