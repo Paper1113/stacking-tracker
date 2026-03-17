@@ -62,7 +62,14 @@
       window.addEventListener("message", function(event) {
         if (event.data.type === "streamlit:render") {
           onRender(event.data);
-          
+
+          // Get value from Streamlit (for clearing input)
+          const args = event.data.args;
+          if (args && args.value !== undefined && args.value !== null) {
+            const input = document.getElementById("num_input");
+            input.value = args.value;
+          }
+
           // Apply Streamlit's active theme (Dark Mode / Light Mode support)
           let theme = event.data.theme;
           if (theme) {
