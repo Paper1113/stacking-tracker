@@ -257,13 +257,12 @@ with tab_pb:
             # Show the trend chart
             st.line_chart(chart_data)
             
-            # Show the top 5 PB table below the chart (best per person, then top 5)
+            # Show the top 5 PB table below the chart (fastest 5 times overall)
             st.markdown("##### 🏆 Top 5 PB")
             rank_df = valid_df[valid_df['Mode'] == m].copy()
             if not rank_df.empty:
                 rank_df['Date'] = pd.to_datetime(rank_df['Timestamp'], errors='coerce').dt.strftime('%Y-%m-%d')
-                best_idx = rank_df.groupby('Name')['Time'].idxmin()
-                rank_df = rank_df.loc[best_idx, ['Name', 'Time', 'Date']].sort_values(by='Time').head(5).reset_index(drop=True)
+                rank_df = rank_df.sort_values(by='Time').head(5).reset_index(drop=True)
                 rank_df.insert(0, "Rank", range(1, len(rank_df) + 1))
 
                 # Safely format Time column
