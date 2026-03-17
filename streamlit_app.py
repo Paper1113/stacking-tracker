@@ -257,20 +257,24 @@ with tab_pb:
             # Show the trend chart
             st.line_chart(chart_data)
             
-            # Show the top 5 PB table below the chart (best per person, then top 5)
-            st.markdown("##### 🏆 Top 5 PB")
+            # Show per-person Top 5 PB tables below the chart
+            st.markdown("##### 🏆 Top 5 PB (Per Player)")
             rank_df = valid_df[valid_df['Mode'] == m].copy()
             if not rank_df.empty:
                 rank_df['Date'] = pd.to_datetime(rank_df['Timestamp'], errors='coerce').dt.strftime('%Y-%m-%d')
-                best_idx = rank_df.groupby('Name')['Time'].idxmin()
-                rank_df = rank_df.loc[best_idx, ['Name', 'Time', 'Date']].sort_values(by='Time').head(5).reset_index(drop=True)
-                rank_df.insert(0, "Rank", range(1, len(rank_df) + 1))
+                for p_name in sorted(rank_df['Name'].unique()):
+                    p_df = rank_df[rank_df['Name'] == p_name].sort_values(by='Time').head(5).reset_index(drop=True)
+                    if p_df.empty:
+                        continue
+                    p_df.insert(0, "Rank", range(1, len(p_df) + 1))
 
-                # Safely format Time column
-                rank_df['Time'] = rank_df['Time'].apply(
-                    lambda x: f"{float(x):.3f}s" if pd.notnull(x) and str(x).replace('.', '', 1).isdigit() else str(x)
-                )
-                st.dataframe(rank_df[['Rank', 'Name', 'Time', 'Date']], hide_index=True, width="stretch")
+                    # Safely format Time column
+                    p_df['Time'] = p_df['Time'].apply(
+                        lambda x: f"{float(x):.3f}s" if pd.notnull(x) and str(x).replace('.', '', 1).isdigit() else str(x)
+                    )
+
+                    st.markdown(f"**{p_name}**")
+                    st.dataframe(p_df[['Rank', 'Time', 'Date']], hide_index=True, width="stretch")
             else:
                 st.write(t("pb_no_records"))
             st.divider()

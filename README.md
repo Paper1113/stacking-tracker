@@ -25,6 +25,7 @@ A lightweight practice logging app built for Sport Stacking enthusiasts and pare
 - Tracks each player's fastest time per mode
 - Features an **interactive trend chart (Line Chart)** to visualize progress over time
 - Grouped by mode with the date the PB was set
+- Shows a Top 5 PB table per player for each mode
 
 ### 🛡️ Reliability & Cache Management
 - **Manual Refresh**: A "Refresh Data" button gives users control to instantly sync with the latest Google Sheets data, bypassing Streamlit cache
