@@ -3,7 +3,9 @@ from datetime import datetime
 from utils.data_manager import TIMEZONE
 from utils.i18n import t
 
-def calculate_ao5(group):
+from typing import Optional
+
+def calculate_ao5(group: pd.DataFrame) -> Optional[float]:
     """Calculate Ao5: drop best and worst from last 5, average middle 3."""
     if len(group) >= 5:
         last_5 = group.tail(5)['Time'].tolist()
@@ -11,7 +13,7 @@ def calculate_ao5(group):
         return sum(last_5[1:4]) / 3
     return None
 
-def prepare_ao5_data(valid_df_sorted):
+def prepare_ao5_data(valid_df_sorted: pd.DataFrame) -> pd.DataFrame:
     """Prepare Ao5 DataFrame."""
     ao5_results = []
     if not valid_df_sorted.empty:
@@ -21,7 +23,7 @@ def prepare_ao5_data(valid_df_sorted):
                 ao5_results.append({'Name': a_name, 'Mode': a_mode, 'Ao5': ao5})
     return pd.DataFrame(ao5_results) if ao5_results else pd.DataFrame()
 
-def prepare_pb_data(valid_df):
+def prepare_pb_data(valid_df: pd.DataFrame) -> pd.DataFrame:
     """Prepare PB DataFrame."""
     if not valid_df.empty:
         idx = valid_df.groupby(['Name', 'Mode'])['Time'].idxmin()
@@ -31,7 +33,7 @@ def prepare_pb_data(valid_df):
         return pb_df
     return pd.DataFrame()
 
-def prepare_daily_progress_data(df, goals_df):
+def prepare_daily_progress_data(df: pd.DataFrame, goals_df: pd.DataFrame) -> pd.DataFrame:
     """Prepare Daily Progress DataFrame based on Goals."""
     if df.empty:
         return pd.DataFrame()
