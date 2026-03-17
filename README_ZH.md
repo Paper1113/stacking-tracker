@@ -111,11 +111,15 @@ streamlit run streamlit_app.py
 
 ## 📁 專案結構
 
-```
+```text
 stacking-tracker/
-├── streamlit_app.py    # 主應用程式
+├── streamlit_app.py    # 主應用程式 (負責 UI 佈局)
 ├── requirements.txt    # Python 依賴
 ├── .gitignore          # Git 忽略規則
+├── utils/              # 獨立功能模組
+│   ├── data_manager.py # Google Sheets 連線與存取邏輯
+│   ├── i18n.py         # 多國語系翻譯字典與切換邏輯
+│   └── stats.py        # Ao5、PB 與每日進度計算邏輯
 ├── .streamlit/
 │   └── secrets.toml    # Google Sheets 連線設定 (不上傳)
 ├── README.md           # 英文說明文檔

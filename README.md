@@ -111,11 +111,15 @@ streamlit run streamlit_app.py
 
 ## 📁 Project Structure
 
-```
+```text
 stacking-tracker/
-├── streamlit_app.py    # Main application
+├── streamlit_app.py    # Main application (UI Layout)
 ├── requirements.txt    # Python dependencies
 ├── .gitignore          # Git ignore rules
+├── utils/              # Utility modules
+│   ├── data_manager.py # Google Sheets connection & CRUD logic
+│   ├── i18n.py         # Translations & language selection
+│   └── stats.py        # Ao5, PB, and Progress calculations
 ├── .streamlit/
 │   └── secrets.toml    # Google Sheets credentials (not committed)
 ├── README.md           # English documentation
