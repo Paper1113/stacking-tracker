@@ -58,7 +58,7 @@ TRANSLATIONS = {
         "err_read_fail": "讀取失敗（請檢查 Sheet 名稱是否為 Data）：{err}",
         "records_header": "📜 最近紀錄",
         "records_today": "📅 今日 ({date})",
-        "records_past": "📆 過往紀錄 (按日分組)",
+        "records_past": "📆 過往紀錄 (按項目分組)",
         "col_date": "日期",
         "col_fastest": "最快",
         "col_players": "選手",
@@ -100,7 +100,7 @@ TRANSLATIONS = {
         "err_read_fail": "Read failed (check if worksheet is named Data): {err}",
         "records_header": "📜 Recent Records",
         "records_today": "📅 Today ({date})",
-        "records_past": "📆 Past Records (grouped by date)",
+        "records_past": "📆 Past Records (grouped by mode)",
         "col_date": "Date",
         "col_fastest": "Fastest",
         "col_players": "Players",
@@ -245,8 +245,80 @@ except Exception:
 if 'last_name' in st.session_state and st.session_state.last_name not in names:
     st.session_state.last_name = names[0]
 
+
 # ============================================================
-# 📊 Stats Tabs (Daily/Ao5/PB) - Optional view
+# Main Input Section (wrapped in @st.fragment to prevent full-page reruns)
+# ============================================================
+@st.fragment
+def input_section():
+    if 'last_name' not in st.session_state:
+        st.session_state.last_name = names[0]
+    if 'last_mode' not in st.session_state:
+        st.session_state.last_mode = AVAILABLE_MODES[0]
+    if 'input_time' not in st.session_state:
+        st.session_state.input_time = None
+
+    name_idx = names.index(st.session_state.last_name) if st.session_state.last_name in names else 0
+    mode_idx = AVAILABLE_MODES.index(st.session_state.last_mode) if st.session_state.last_mode in AVAILABLE_MODES else 0
+
+    st.subheader(t("input_header"))
+
+    c1, c2 = st.columns(2)
+    with c1:
+        name = st.selectbox(t("input_player"), names, index=name_idx)
+    with c2:
+        mode = st.radio(t("input_mode"), AVAILABLE_MODES, index=mode_idx, horizontal=True)
+
+    # We use a custom static component for the decimal input on iOS
+    # because st.number_input sometimes fails to trigger the numeric keypad with a decimal.
+    if 'time_input_key' not in st.session_state:
+        st.session_state.time_input_key = 0
+
+    st.markdown(f"<div style='margin-bottom: 5px; font-size: 14px;'>{t('input_time')}</div>", unsafe_allow_html=True)
+    time_val = decimal_input(key=f"time_input_{st.session_state.time_input_key}")
+
+    st.write("")
+
+    btn_col1, btn_col2 = st.columns(2)
+    with btn_col1:
+        submit_success = st.button(t("btn_success"), use_container_width=True)
+    with btn_col2:
+        submit_dnf = st.button(t("btn_dnf"), use_container_width=True, type="primary")
+
+    if submit_success or submit_dnf:
+        is_scratch = submit_dnf
+
+        if time_val is None or time_val <= 0:
+            st.error(t("err_invalid_time"))
+        else:
+            timestamp_str = datetime.now(TIMEZONE).strftime("%Y-%m-%d %H:%M:%S")
+
+            try:
+                url = st.secrets.connections.gsheets.spreadsheet
+                ws = conn.client._client.open_by_url(url).worksheet("Data")
+
+                safe_mode = f"'{mode}" if mode in ["3-3-3", "3-6-3"] else mode
+                row_data = [timestamp_str, name, safe_mode, time_val, is_scratch]
+                ws.append_row(row_data, table_range="A1", value_input_option="USER_ENTERED")
+
+                if is_scratch:
+                    st.warning(t("msg_dnf", name=name, mode=mode, time=time_val))
+                else:
+                    st.success(t("msg_success", name=name, mode=mode, time=time_val))
+
+                st.session_state.last_name = name
+                st.session_state.last_mode = mode
+                st.session_state.time_input_key += 1
+
+                st.cache_data.clear()
+                st.rerun()
+            except Exception as e:
+                st.error(t("err_save_fail", err=e))
+
+input_section()
+
+# ============================================================
+# 📊 Stats Tabs (Daily/Ao5/PB)
 # ============================================================
 # Initialize empty DataFrames in case valid_df is empty
 ao5_df = pd.DataFrame()
@@ -349,80 +421,8 @@ with tab_pb:
 st.divider()
 
 # ============================================================
-# Main Input Section (wrapped in @st.fragment to prevent full-page reruns)
-# ============================================================
-@st.fragment
-def input_section():
-    if 'last_name' not in st.session_state:
-        st.session_state.last_name = names[0]
-    if 'last_mode' not in st.session_state:
-        st.session_state.last_mode = AVAILABLE_MODES[0]
-    if 'input_time' not in st.session_state:
-        st.session_state.input_time = None
-
-    name_idx = names.index(st.session_state.last_name) if st.session_state.last_name in names else 0
-    mode_idx = AVAILABLE_MODES.index(st.session_state.last_mode) if st.session_state.last_mode in AVAILABLE_MODES else 0
-
-    st.subheader(t("input_header"))
-
-    c1, c2 = st.columns(2)
-    with c1:
-        name = st.selectbox(t("input_player"), names, index=name_idx)
-    with c2:
-        mode = st.radio(t("input_mode"), AVAILABLE_MODES, index=mode_idx, horizontal=True)
-
-    # We use a custom static component for the decimal input on iOS
-    # because st.number_input sometimes fails to trigger the numeric keypad with a decimal.
-    if 'time_input_key' not in st.session_state:
-        st.session_state.time_input_key = 0
-
-    st.markdown(f"<div style='margin-bottom: 5px; font-size: 14px;'>{t('input_time')}</div>", unsafe_allow_html=True)
-    time_val = decimal_input(key=f"time_input_{st.session_state.time_input_key}")
-
-    st.write("")
-
-    btn_col1, btn_col2 = st.columns(2)
-    with btn_col1:
-        submit_success = st.button(t("btn_success"), use_container_width=True)
-    with btn_col2:
-        submit_dnf = st.button(t("btn_dnf"), use_container_width=True, type="primary")
-
-    if submit_success or submit_dnf:
-        is_scratch = submit_dnf
-
-        if time_val is None or time_val <= 0:
-            st.error(t("err_invalid_time"))
-        else:
-            timestamp_str = datetime.now(TIMEZONE).strftime("%Y-%m-%d %H:%M:%S")
-
-            try:
-                url = st.secrets.connections.gsheets.spreadsheet
-                ws = conn.client._client.open_by_url(url).worksheet("Data")
-
-                safe_mode = f"'{mode}" if mode in ["3-3-3", "3-6-3"] else mode
-                row_data = [timestamp_str, name, safe_mode, time_val, is_scratch]
-                ws.append_row(row_data, table_range="A1", value_input_option="USER_ENTERED")
-
-                if is_scratch:
-                    st.warning(t("msg_dnf", name=name, mode=mode, time=time_val))
-                else:
-                    st.success(t("msg_success", name=name, mode=mode, time=time_val))
-
-                st.session_state.last_name = name
-                st.session_state.last_mode = mode
-                st.session_state.time_input_key += 1
-
-                st.cache_data.clear()
-                st.rerun()
-            except Exception as e:
-                st.error(t("err_save_fail", err=e))
-
-input_section()
-
-# ============================================================
 # Records Display (last 500 records)
 # ============================================================
-st.divider()
 st.subheader(t("records_header"))
 if not df.empty:
     today_str = datetime.now(TIMEZONE).strftime("%Y-%m-%d")
@@ -438,18 +438,22 @@ if not df.empty:
         )
         st.dataframe(today_records[['Timestamp', 'Name', 'Mode', 'Time']], width="stretch", hide_index=True)
     
-    # --- Past records: grouped summary by date + mode ---
+    # --- Past records: grouped by Mode > Date ---
     past_records = recent_df[recent_df['Date'] != today_str].copy()
     if not past_records.empty:
-        grouped_dates = past_records.groupby(['Date', 'Mode']).apply(
-            lambda g: pd.Series({
-                t('col_total'): len(g),
-                'DNF': int(g['IsScratch'].sum()),
-                t('col_fastest'): f"{g.loc[~g['IsScratch'], 'Time'].min():.3f}s" if (~g['IsScratch']).any() else '-',
-                t('col_players'): ', '.join(g['Name'].unique()),
-            }),
-            include_groups=False
-        ).sort_index(ascending=False).reset_index().rename(columns={'Date': t('col_date'), 'Mode': t('col_mode')})
-        
         st.markdown(f"### {t('records_past')}")
-        st.dataframe(grouped_dates, width="stretch", hide_index=True)
+        # Group by Mode first, then show each date's summary
+        for mode in sorted(past_records['Mode'].unique()):
+            mode_records = past_records[past_records['Mode'] == mode]
+            grouped_by_date = mode_records.groupby('Date').apply(
+                lambda g: pd.Series({
+                    t('col_total'): len(g),
+                    'DNF': int(g['IsScratch'].sum()),
+                    t('col_fastest'): f"{g.loc[~g['IsScratch'], 'Time'].min():.3f}s" if (~g['IsScratch']).any() else '-',
+                    t('col_players'): ', '.join(g['Name'].unique()),
+                }),
+                include_groups=False
+            ).sort_index(ascending=False).reset_index().rename(columns={'Date': t('col_date')})
+
+            with st.expander(f"{mode}", expanded=False):
+                st.dataframe(grouped_by_date[[t('col_date'), t('col_total'), 'DNF', t('col_fastest'), t('col_players')]], hide_index=True, use_container_width=True)
