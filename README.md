@@ -23,7 +23,16 @@ A lightweight practice logging app built for Sport Stacking enthusiasts and pare
 
 ### 🏆 Personal Best (PB)
 - Tracks each player's fastest time per mode
+- Features an **interactive trend chart (Line Chart)** to visualize progress over time
 - Grouped by mode with the date the PB was set
+
+### 🛡️ Reliability & Cache Management
+- **Manual Refresh**: A "Refresh Data" button gives users control to instantly sync with the latest Google Sheets data, bypassing Streamlit cache
+- **API Resilience**: Powered by `tenacity`, all Google Sheets data fetches and uploads have automated retry logic (up to 3 attempts) to prevent crashes from temporary network timeouts
+
+### 🔄 CI/CD & Automated Testing
+- Protected by **GitHub Actions** workflows
+- Core logic (like Ao5 rules) is guarded by **pytest** unit tests that run automatically on every push or PR
 
 ### ❌ Scratch / DNF Support
 - Mark dropped-cup or incomplete attempts as Scratch / DNF
@@ -48,6 +57,8 @@ A lightweight practice logging app built for Sport Stacking enthusiasts and pare
 ## 🛠️ Tech Stack
 - **Frontend/Backend**: [Streamlit](https://streamlit.io/) 1.55+
 - **Database**: [Google Sheets](https://www.google.com/sheets/about/) (via `st-gsheets-connection`)
+- **Resilience**: `tenacity` (API retries)
+- **Testing**: `pytest`, GitHub Actions
 - **Language**: Python 3.9+
 
 ## 🚀 Quick Start
@@ -99,7 +110,7 @@ python -m venv venv
 venv\Scripts\activate  # Windows
 
 # Install dependencies
-pip install streamlit streamlit-gsheets-connection pandas
+pip install streamlit st-gsheets-connection pandas pytest tenacity
 
 # Configure secrets
 mkdir .streamlit
@@ -113,9 +124,16 @@ streamlit run streamlit_app.py
 
 ```text
 stacking-tracker/
+├── .github/
+│   └── workflows/
+│       └── test.yml    # CI/CD pipeline for automated testing
 ├── streamlit_app.py    # Main application (UI Layout)
+├── config.json         # Application constants (e.g., Modes, Data TTL)
+├── i18n.json           # Externalized bilingual translation strings
 ├── requirements.txt    # Python dependencies
 ├── .gitignore          # Git ignore rules
+├── tests/              # Unit tests
+│   └── test_stats.py   # Pytest coverage for Ao5 calculations
 ├── utils/              # Utility modules
 │   ├── data_manager.py # Google Sheets connection & CRUD logic
 │   ├── i18n.py         # Translations & language selection

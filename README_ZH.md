@@ -23,7 +23,16 @@
 
 ### 🏆 個人最佳 (PB)
 - 自動追蹤每位選手在每個項目的最快成績
+- 內建 **互動式歷史趨勢圖 (Line Chart)**，將進步軌跡視覺化
 - 按項目分組，顯示 PB 及達成日期
+
+### 🛡️ 穩定性與快取管理
+- **手動重新整理**：側邊欄新增「重新整理」按鈕，讓使用者能隨時清空 Streamlit 快取並強制抓取雲端最新資料
+- **API 自動重試**：導入 `tenacity` 套件，所有與 Google Sheets 的連線遇到網路不穩時，皆會自動在背景安全重試（最多 3 次），避免 App 崩潰
+
+### 🔄 CI/CD 與自動化測試
+- 專案受 **GitHub Actions** 自動化工作流程保護
+- 核心計算邏輯（如 Ao5 規則）皆有 **pytest** 單元測試覆蓋，並在每次 Push 或 PR 時自動執行驗證
 
 ### ❌ 失誤 / DNF 標記
 - 支援「跌杯」等失誤情況，標記為 Scratch / DNF
@@ -48,6 +57,8 @@
 ## 🛠️ 技術棧
 - **Frontend/Backend**: [Streamlit](https://streamlit.io/) 1.55+
 - **Database**: [Google Sheets](https://www.google.com/sheets/about/) (via `st-gsheets-connection`)
+- **Resilience**: `tenacity` (API 自動重試)
+- **Testing**: `pytest`, GitHub Actions
 - **Language**: Python 3.9+
 
 ## 🚀 快速部署指南
@@ -99,7 +110,7 @@ python -m venv venv
 venv\Scripts\activate  # Windows
 
 # 安裝依賴
-pip install streamlit streamlit-gsheets-connection pandas
+pip install streamlit st-gsheets-connection pandas pytest tenacity
 
 # 設定 secrets
 mkdir .streamlit
@@ -113,12 +124,19 @@ streamlit run streamlit_app.py
 
 ```text
 stacking-tracker/
+├── .github/
+│   └── workflows/
+│       └── test.yml    # GitHub Actions 自動化測試流程
 ├── streamlit_app.py    # 主應用程式 (負責 UI 佈局)
-├── requirements.txt    # Python 依賴
+├── config.json         # 專案常數設定 (例: 支援項目、資料暫存頻率)
+├── i18n.json           # 外部化的多國語系翻譯檔
+├── requirements.txt    # Python 依賴清單
 ├── .gitignore          # Git 忽略規則
+├── tests/              # 單元測試資料夾
+│   └── test_stats.py   # 針對 Ao5 與資料處理邏輯的 pytest
 ├── utils/              # 獨立功能模組
 │   ├── data_manager.py # Google Sheets 連線與存取邏輯
-│   ├── i18n.py         # 多國語系翻譯字典與切換邏輯
+│   ├── i18n.py         # 語系載入與切換邏輯
 │   └── stats.py        # Ao5、PB 與每日進度計算邏輯
 ├── .streamlit/
 │   └── secrets.toml    # Google Sheets 連線設定 (不上傳)
