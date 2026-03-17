@@ -257,18 +257,21 @@ with tab_pb:
             # Show the trend chart
             st.line_chart(chart_data)
             
-            # Show the top 5 PB table below the chart
+            # Show the top 5 PB table below the chart (fastest 5 times overall)
             st.markdown("##### 🏆 Top 5 PB")
-            abs_pb_idx = m_df.groupby('Name')['Time'].idxmin()
-            abs_pb_df = m_df.loc[abs_pb_idx, ['Name', 'Time', 'Date']].copy()
-            top_pb_df = abs_pb_df.sort_values(by='Time').head(5).reset_index(drop=True)
-            top_pb_df.insert(0, "Rank", range(1, len(top_pb_df) + 1))
-            
-            # Safely format Time column
-            top_pb_df['Time'] = top_pb_df['Time'].apply(
-                lambda x: f"{float(x):.3f}s" if pd.notnull(x) and str(x).replace('.', '', 1).isdigit() else str(x)
-            )
-            st.dataframe(top_pb_df, hide_index=True, width="stretch")
+            rank_df = valid_df[valid_df['Mode'] == m].copy()
+            if not rank_df.empty:
+                rank_df['Date'] = pd.to_datetime(rank_df['Timestamp'], errors='coerce').dt.strftime('%Y-%m-%d')
+                rank_df = rank_df.sort_values(by='Time').head(5).reset_index(drop=True)
+                rank_df.insert(0, "Rank", range(1, len(rank_df) + 1))
+
+                # Safely format Time column
+                rank_df['Time'] = rank_df['Time'].apply(
+                    lambda x: f"{float(x):.3f}s" if pd.notnull(x) and str(x).replace('.', '', 1).isdigit() else str(x)
+                )
+                st.dataframe(rank_df[['Rank', 'Name', 'Time', 'Date']], hide_index=True, width="stretch")
+            else:
+                st.write(t("pb_no_records"))
             st.divider()
     else:
         st.write(t("pb_no_records"))
