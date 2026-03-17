@@ -23,8 +23,14 @@ def decimal_input(key=None, value=None):
 # Page configuration (responsive layout for mobile)
 st.set_page_config(page_title="Stacking Tracker", layout="centered")
 
-# --- Language Setup ---
+# JS language detection setup
 setup_language_selector()
+
+# Add Manual Refresh Button
+st.sidebar.markdown("---")
+if st.sidebar.button(t("btn_refresh"), use_container_width=True):
+    st.cache_data.clear()
+    st.rerun()
 
 # --- Global CSS Styles ---
 st.markdown("""

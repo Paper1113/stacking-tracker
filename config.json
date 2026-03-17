@@ -1,0 +1,5 @@
+{
+    "AVAILABLE_MODES": ["3-3-3", "3-6-3", "Cycle"],
+    "DEFAULT_PLAYERS": ["Johnny", "Ashley"],
+    "DATA_TTL": 300
+}
