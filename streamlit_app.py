@@ -110,7 +110,7 @@ def input_section():
     else:
         st.session_state.fast_mode = False
 
-    # Use st.text_input with dynamic key to allow clearing
+    # Use custom decimal_input with dynamic key to allow clearing
     # Key changes when we want to reset the input
     if 'time_input_key' not in st.session_state:
         st.session_state.time_input_key = 0
