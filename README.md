@@ -48,6 +48,7 @@ A lightweight practice logging app built for Sport Stacking enthusiasts and pare
 
 ### 📜 Records Overview
 - Today's records shown individually with full detail
+- **Edit & Delete**: Seamlessly modify or remove any of today's valid records directly from the app interface
 - Past records grouped by date + mode with summary stats (total attempts, DNFs, fastest time)
 
 ### 🌐 Bilingual Support

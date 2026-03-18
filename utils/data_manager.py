@@ -114,3 +114,43 @@ def sync_temp_logs_to_cloud(conn, temp_logs):
         for log in temp_logs
     ]
     ws.append_rows(rows_data, table_range="A1", value_input_option="USER_ENTERED")
+
+def _find_row_index(ws, timestamp_str, name, mode):
+    """Helper to find the 1-based row index for a specific record."""
+    all_values = ws.get_all_values()
+    # Headers are usually at row 1 (index 0 in list). Find the match.
+    # We strip single quotes from Mode just in case.
+    for i, row in enumerate(all_values):
+        if i == 0:
+            continue # skip header
+        if len(row) >= 3:
+            r_ts, r_name, r_mode = row[0], row[1], row[2].lstrip("'")
+            if r_ts == timestamp_str and r_name == name and r_mode == mode:
+                # GSheets rows are 1-indexed
+                return i + 1
+    return None
+
+def update_record_in_cloud(conn, timestamp_str, name, mode, new_time_val, is_scratch):
+    """Update a specific record in Google Sheets."""
+    url = st.secrets.connections.gsheets.spreadsheet
+    ws = conn.client._client.open_by_url(url).worksheet("Data")
+    
+    row_idx = _find_row_index(ws, timestamp_str, name, mode)
+    if row_idx is None:
+        raise ValueError(t("msg_record_not_found"))
+        
+    # Update time (col 4 / D) and IsScratch (col 5 / E)
+    ws.update_cell(row_idx, 4, new_time_val)
+    ws.update_cell(row_idx, 5, is_scratch)
+
+def delete_record_from_cloud(conn, timestamp_str, name, mode):
+    """Delete a specific record from Google Sheets."""
+    url = st.secrets.connections.gsheets.spreadsheet
+    ws = conn.client._client.open_by_url(url).worksheet("Data")
+    
+    row_idx = _find_row_index(ws, timestamp_str, name, mode)
+    if row_idx is None:
+        raise ValueError(t("msg_record_not_found"))
+        
+    ws.delete_rows(row_idx)
+
