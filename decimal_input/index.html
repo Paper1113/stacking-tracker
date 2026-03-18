@@ -71,6 +71,8 @@
           if (args && args.value !== undefined && args.value !== null) {
             const input = document.getElementById("num_input");
             input.value = args.value;
+            // Send initial value back so Python side isn't None
+            sendMessageToStreamlitClient("streamlit:setComponentValue", { value: args.value });
           }
 
           // Apply Streamlit's active theme (Dark Mode / Light Mode support)
