@@ -19,7 +19,7 @@ _decimal_input_func = components.declare_component(
 )
 
 def decimal_input(key=None, value=None):
-    return _decimal_input_func(key=key, default=value)
+    return _decimal_input_func(key=key, default=value, value=value)
 
 # Page configuration (responsive layout for mobile)
 st.set_page_config(page_title="Stacking Tracker", layout="centered")
@@ -306,7 +306,7 @@ if not df.empty:
         
         # --- Edit / Delete specifically for today's valid records ---
         st.write("")
-        with st.expander(t("records_edit_header"), expanded=False):
+        with st.expander(t("records_edit_header"), expanded=st.session_state.get("edit_expander_open", False)):
             # We want the unformatted rows so they keep their exact Timestamp & Time float
             edit_options = recent_df[recent_df['Date'] == today_str].copy()
             if not edit_options.empty:
@@ -324,7 +324,8 @@ if not df.empty:
                     t("edit_select_record"), 
                     options=edit_options['UID'].tolist(),
                     format_func=lambda uid: uid_to_display[uid],
-                    key="edit_record_select"
+                    key="edit_record_select",
+                    on_change=lambda: setattr(st.session_state, "edit_expander_open", True)
                 )
                 
                 if selected_uid:
@@ -360,6 +361,7 @@ if not df.empty:
                                         new_scratch
                                     )
                                     st.success(t("msg_update_success"))
+                                    st.session_state.edit_expander_open = False
                                     st.cache_data.clear()
                                     st.rerun()
                                 except Exception as e:
@@ -375,6 +377,7 @@ if not df.empty:
                                     orig_mode
                                 )
                                 st.success(t("msg_delete_success"))
+                                st.session_state.edit_expander_open = False
                                 st.cache_data.clear()
                                 st.rerun()
                             except Exception as e:
