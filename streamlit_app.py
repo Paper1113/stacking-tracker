@@ -315,17 +315,21 @@ if not df.empty:
                     display_time = f"❌ {row['Time']}s (DNF)" if row.get('IsScratch', False) else f"{row['Time']}s"
                     return f"[{row['Timestamp'][11:]}] {row['Name']} - {row['Mode']} - {display_time}"
                 
-                edit_options['Display'] = edit_options.apply(format_record, axis=1)
+                # Use a Unique ID instead of Display string for the options
+                # so that Streamlit retains the selection even when the display changes (e.g. after update)
+                edit_options['UID'] = edit_options.apply(lambda r: f"{r['Timestamp']}|{r['Name']}|{r['Mode']}", axis=1)
+                uid_to_display = dict(zip(edit_options['UID'], edit_options.apply(format_record, axis=1)))
                 
-                selected_display = st.selectbox(
+                selected_uid = st.selectbox(
                     t("edit_select_record"), 
-                    options=edit_options['Display'].tolist(),
+                    options=edit_options['UID'].tolist(),
+                    format_func=lambda uid: uid_to_display[uid],
                     key="edit_record_select"
                 )
                 
-                if selected_display:
+                if selected_uid:
                     # Find the exact row again based on the selectbox choice
-                    selected_row = edit_options[edit_options['Display'] == selected_display].iloc[0]
+                    selected_row = edit_options[edit_options['UID'] == selected_uid].iloc[0]
                     orig_ts = selected_row['Timestamp']
                     orig_name = selected_row['Name']
                     orig_mode = selected_row['Mode']
