@@ -49,7 +49,16 @@
         "col_fastest": "最快",
         "col_players": "選手",
         "lang_label": "🌐 語言 / Language",
-        "btn_refresh": "🔄 重新整理 / Refresh"
+        "btn_refresh": "🔄 重新整理 / Refresh",
+        "records_edit_header": "✏️ 修改或刪除今日記錄",
+        "edit_select_record": "選擇要修改的記錄",
+        "edit_time": "新的成績 (秒)",
+        "edit_dnf": "改為失誤 (DNF)",
+        "btn_update": "更新記錄",
+        "btn_delete": "刪除記錄",
+        "msg_update_success": "✅ 成功更新記錄！",
+        "msg_delete_success": "🗑️ 成功刪除記錄！",
+        "msg_record_not_found": "找不到指定的記錄，可能已被刪除。"
     },
     "en": {
         "subtitle": "Record your sport stacking times, beat your PB!",
@@ -101,6 +110,15 @@
         "col_fastest": "Fastest",
         "col_players": "Players",
         "lang_label": "🌐 語言 / Language",
-        "btn_refresh": "🔄 重新整理 / Refresh"
+        "btn_refresh": "🔄 重新整理 / Refresh",
+        "records_edit_header": "✏️ Edit or Delete Today's Records",
+        "edit_select_record": "Select a record to edit",
+        "edit_time": "New Time (sec)",
+        "edit_dnf": "Mark as DNF",
+        "btn_update": "Update Record",
+        "btn_delete": "Delete Record",
+        "msg_update_success": "✅ Record updated successfully!",
+        "msg_delete_success": "🗑️ Record deleted successfully!",
+        "msg_record_not_found": "Record not found. It might have been deleted."
     }
 }

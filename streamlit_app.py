@@ -8,6 +8,7 @@ from utils.i18n import t, setup_language_selector, AVAILABLE_MODES
 from utils.data_manager import (
     get_connection, load_data, load_players, load_goals,
     get_current_timestamp, save_record_to_cloud, sync_temp_logs_to_cloud,
+    update_record_in_cloud, delete_record_from_cloud,
     TIMEZONE
 )
 from utils.stats import prepare_ao5_data, prepare_pb_data, prepare_daily_progress_data
@@ -302,7 +303,79 @@ if not df.empty:
             axis=1
         )
         st.dataframe(today_records[['Timestamp', 'Name', 'Mode', 'Time']], width="stretch", hide_index=True)
-    
+        
+        # --- Edit / Delete specifically for today's valid records ---
+        st.write("")
+        with st.expander(t("records_edit_header"), expanded=False):
+            # We want the unformatted rows so they keep their exact Timestamp & Time float
+            edit_options = recent_df[recent_df['Date'] == today_str].copy()
+            if not edit_options.empty:
+                # Format options for selectbox
+                def format_record(row):
+                    display_time = f"❌ {row['Time']}s (DNF)" if row.get('IsScratch', False) else f"{row['Time']}s"
+                    return f"[{row['Timestamp'][11:]}] {row['Name']} - {row['Mode']} - {display_time}"
+                
+                edit_options['Display'] = edit_options.apply(format_record, axis=1)
+                
+                selected_display = st.selectbox(
+                    t("edit_select_record"), 
+                    options=edit_options['Display'].tolist(),
+                    key="edit_record_select"
+                )
+                
+                if selected_display:
+                    # Find the exact row again based on the selectbox choice
+                    selected_row = edit_options[edit_options['Display'] == selected_display].iloc[0]
+                    orig_ts = selected_row['Timestamp']
+                    orig_name = selected_row['Name']
+                    orig_mode = selected_row['Mode']
+                    orig_time = float(selected_row['Time']) if pd.notnull(selected_row['Time']) else 0.0
+                    orig_scratch = bool(selected_row.get('IsScratch', False))
+                    
+                    st.markdown(f"**{t('edit_time')}**")
+                    new_time_val = decimal_input(
+                        key=f"edit_time_input_{orig_ts}",
+                        value=orig_time
+                    )
+                    
+                    new_scratch = st.checkbox(t("edit_dnf"), value=orig_scratch, key=f"edit_dnf_{orig_ts}")
+                    
+                    col_u, col_d = st.columns(2)
+                    with col_u:
+                        if st.button(t("btn_update"), use_container_width=True, type="primary"):
+                            if new_time_val is None or new_time_val <= 0:
+                                st.error(t("err_invalid_time"))
+                            else:
+                                try:
+                                    update_record_in_cloud(
+                                        conn, 
+                                        orig_ts, 
+                                        orig_name, 
+                                        orig_mode, 
+                                        new_time_val, 
+                                        new_scratch
+                                    )
+                                    st.success(t("msg_update_success"))
+                                    st.cache_data.clear()
+                                    st.rerun()
+                                except Exception as e:
+                                    st.error(f"Error: {e}")
+                                    
+                    with col_d:
+                        if st.button(t("btn_delete"), use_container_width=True):
+                            try:
+                                delete_record_from_cloud(
+                                    conn, 
+                                    orig_ts, 
+                                    orig_name, 
+                                    orig_mode
+                                )
+                                st.success(t("msg_delete_success"))
+                                st.cache_data.clear()
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Error: {e}")
+                                
     # --- Past records: grouped by Mode > Date ---
     past_records = recent_df[recent_df['Date'] != today_str].copy()
     if not past_records.empty:
