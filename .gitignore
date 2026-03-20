@@ -5,6 +5,7 @@
 # Virtual Environment
 venv/
 .venv/
+venv_old/
 
 # Python cache files
 __pycache__/
