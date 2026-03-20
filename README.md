@@ -24,12 +24,13 @@ A lightweight practice logging app built for Sport Stacking enthusiasts and pare
 ### 🏆 Personal Best (PB)
 - Tracks each player's fastest time per mode
 - Features an **interactive trend chart (Line Chart)** to visualize progress over time
-- Grouped by mode with the date the PB was set
+- Grouped by mode with each mode section collapsed by default for cleaner browsing
 - Shows a Top 5 PB table per player for each mode
 
 ### 🛡️ Reliability & Cache Management
 - **Manual Refresh**: A "Refresh Data" button gives users control to instantly sync with the latest Google Sheets data, bypassing Streamlit cache
 - **API Resilience**: Powered by `tenacity`, all Google Sheets data fetches and uploads have automated retry logic (up to 3 attempts) to prevent crashes from temporary network timeouts
+- **Stable Record Targeting**: Each record now carries a unique `RecordId`, so update/delete actions always target the intended row even when timestamp/name/mode are duplicated
 
 ### 🔄 CI/CD & Automated Testing
 - Protected by **GitHub Actions** workflows
@@ -45,11 +46,13 @@ A lightweight practice logging app built for Sport Stacking enthusiasts and pare
 - Optimized number input for mobile numeric keypad
 - Input fields auto-clear after each save
 - Uses a custom Streamlit component for mobile-friendly decimal input (iOS Safari numeric keypad with decimal)
+- Displays the current player + mode selection clearly to reduce mis-taps
 
 ### 📜 Records Overview
-- Today's records shown individually with full detail
-- **Edit & Delete**: Seamlessly modify or remove any of today's valid records directly from the app interface
-- Past records grouped by date + mode with summary stats (total attempts, DNFs, fastest time)
+- Recent records are grouped by mode and collapsed by default
+- Expand any mode to view detailed attempts (timestamp, player, time, DNF marker)
+- **Edit & Delete**: Modify or remove today's records from the main records section
+- Delete actions include an explicit confirmation step to prevent accidental removal
 
 ### 🌐 Bilingual Support
 - Auto-detects browser language and defaults to Traditional Chinese or English
@@ -72,8 +75,10 @@ Create a Google Sheet with the following **3 worksheets**:
 #### `Data` Worksheet (Required)
 Header row:
 
-| Timestamp | Name | Mode | Time | IsScratch |
-|-----------|------|------|------|-----------|
+| Timestamp | Name | Mode | Time | IsScratch | RecordId |
+|-----------|------|------|------|-----------|----------|
+
+- `RecordId` is a unique identifier for each row; legacy rows without it are handled automatically by the app
 
 #### `Players` Worksheet (Recommended)
 Header row:
@@ -135,7 +140,8 @@ stacking-tracker/
 ├── requirements.txt    # Python dependencies
 ├── .gitignore          # Git ignore rules
 ├── tests/              # Unit tests
-│   └── test_stats.py   # Pytest coverage for Ao5 calculations
+│   ├── test_stats.py   # Pytest coverage for Ao5 calculations
+│   └── test_record_id.py # RecordId row-matching safety tests
 ├── utils/              # Utility modules
 │   ├── data_manager.py # Google Sheets connection & CRUD logic
 │   ├── i18n.py         # Translations & language selection
