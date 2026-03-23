@@ -505,13 +505,75 @@ if not df.empty:
 
     if not past_records.empty:
         st.markdown(f"### {t('records_past')}")
-        for mode in sorted(past_records['Mode'].dropna().unique()):
-            mode_records = past_records[past_records['Mode'] == mode].copy().reset_index(drop=True)
-            with st.expander(t("records_mode_group", mode=mode), expanded=False):
-                st.dataframe(
-                    mode_records[['Timestamp', 'Name', 'TimeDisplay']],
-                    hide_index=True,
-                    width="stretch"
-                )
+        for name in sorted(past_records['Name'].dropna().unique()):
+            player_records = past_records[past_records['Name'] == name].copy().reset_index(drop=True)
+            with st.expander(t("records_player_group", name=name), expanded=False):
+                for mode in sorted(player_records['Mode'].dropna().unique()):
+                    mode_records = player_records[player_records['Mode'] == mode].copy().reset_index(drop=True)
+                    with st.expander(t("records_mode_group", mode=mode), expanded=False):
+                        mode_records['TimestampDT'] = pd.to_datetime(mode_records['Timestamp'], errors='coerce')
+                        if 'IsScratch' not in mode_records.columns:
+                            mode_records['IsScratch'] = False
+
+                        # Daily summary per mode under each player: date, total attempts, and fastest completed record.
+                        daily_total_df = (
+                            mode_records.groupby(['Date'], dropna=False)
+                            .agg(
+                                TotalCount=('Date', 'size'),
+                                DnfCount=('IsScratch', lambda s: int(s.fillna(False).astype(bool).sum()))
+                            )
+                            .reset_index()
+                        )
+                        daily_total_df['DnfRate'] = daily_total_df.apply(
+                            lambda row: (
+                                float(row['DnfCount']) / float(row['TotalCount'])
+                                if float(row['TotalCount']) > 0
+                                else 0.0
+                            ),
+                            axis=1
+                        )
+                        daily_total_df['DnfRateDisplay'] = daily_total_df['DnfRate'].apply(lambda x: f"{x:.1%}")
+                        daily_total_df['TotalDisplay'] = daily_total_df.apply(
+                            lambda row: f"{int(row['TotalCount'])} (DNF: {int(row['DnfCount'])})",
+                            axis=1
+                        )
+                        fastest_record_df = (
+                            mode_records[
+                                (~mode_records['IsScratch'])
+                                & (mode_records['Time'].notnull())
+                            ]
+                            .sort_values(
+                                by=['Date', 'Time', 'TimestampDT'],
+                                ascending=[False, True, True],
+                                na_position='last'
+                            )
+                            .drop_duplicates(subset=['Date'], keep='first')
+                            .copy()
+                        )
+                        fastest_record_df['FastestCompletion'] = fastest_record_df['TimeDisplay'].fillna("-")
+
+                        daily_summary_df = daily_total_df.merge(
+                            fastest_record_df[['Date', 'FastestCompletion']],
+                            on=['Date'],
+                            how='left'
+                        )
+                        daily_summary_df['Date'] = daily_summary_df['Date'].fillna("-")
+                        daily_summary_df['FastestCompletion'] = daily_summary_df['FastestCompletion'].fillna("-")
+                        daily_summary_df = daily_summary_df.sort_values(
+                            by=['Date'],
+                            ascending=[False]
+                        ).reset_index(drop=True)
+
+                        display_df = daily_summary_df.rename(columns={
+                            'Date': t("col_date"),
+                            'TotalDisplay': t("col_total"),
+                            'DnfRateDisplay': t("col_dnf_rate"),
+                            'FastestCompletion': t("col_fastest")
+                        })
+                        st.dataframe(
+                            display_df[[t("col_date"), t("col_total"), t("col_dnf_rate"), t("col_fastest")]],
+                            hide_index=True,
+                            width="stretch"
+                        )
 else:
     st.info(t("records_no_records"))
