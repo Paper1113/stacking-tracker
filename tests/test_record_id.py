@@ -4,7 +4,7 @@ import os
 # Add project root to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from utils.data_manager import _find_row_index
+from utils.data_manager_gsheets import _find_row_index
 
 
 class DummyWorksheet:
