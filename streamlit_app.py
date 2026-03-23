@@ -329,38 +329,31 @@ with tab_ao5:
 
 with tab_pb:
     if not pb_df.empty:
-        # Convert to Plotly-ready or Streamlit-ready format
-        # We need a dataframe where index is Date, columns are Players, values are Times
-        for m in sorted(pb_df['Mode'].unique()):
-            with st.expander(t("pb_mode", mode=m), expanded=False):
-                m_df = pb_df[pb_df['Mode'] == m].copy()
+        for p_name in sorted(pb_df['Name'].dropna().unique()):
+            with st.expander(t("pb_player_group", name=p_name), expanded=False):
+                p_pb_df = pb_df[pb_df['Name'] == p_name].copy()
+                for m in sorted(p_pb_df['Mode'].dropna().unique()):
+                    with st.expander(t("pb_mode", mode=m), expanded=False):
+                        pm_df = p_pb_df[p_pb_df['Mode'] == m].copy()
+                        chart_data = pm_df.sort_values(by='Date')[['Date', 'Time']].set_index('Date')
 
-                # Pivot the data for line chart: Date as index, Names as columns
-                chart_data = m_df.pivot(index='Date', columns='Name', values='Time')
+                        # Show trend chart for this player+mode.
+                        st.line_chart(chart_data)
 
-                # Show the trend chart
-                st.line_chart(chart_data)
+                        # Show Top 5 PB attempts for this player+mode.
+                        rank_df = valid_df[(valid_df['Name'] == p_name) & (valid_df['Mode'] == m)].copy()
+                        if not rank_df.empty:
+                            rank_df['Date'] = pd.to_datetime(rank_df['Timestamp'], errors='coerce').dt.strftime('%Y-%m-%d')
+                            p_df = rank_df.sort_values(by='Time').head(5).reset_index(drop=True)
+                            p_df.insert(0, "Rank", range(1, len(p_df) + 1))
 
-                # Show per-person Top 5 PB tables below the chart
-                st.markdown("##### 🏆 Top 5 PB (Per Player)")
-                rank_df = valid_df[valid_df['Mode'] == m].copy()
-                if not rank_df.empty:
-                    rank_df['Date'] = pd.to_datetime(rank_df['Timestamp'], errors='coerce').dt.strftime('%Y-%m-%d')
-                    for p_name in sorted(rank_df['Name'].unique()):
-                        p_df = rank_df[rank_df['Name'] == p_name].sort_values(by='Time').head(5).reset_index(drop=True)
-                        if p_df.empty:
-                            continue
-                        p_df.insert(0, "Rank", range(1, len(p_df) + 1))
-
-                        # Safely format Time column
-                        p_df['Time'] = p_df['Time'].apply(
-                            lambda x: f"{float(x):.3f}s" if pd.notnull(x) and str(x).replace('.', '', 1).isdigit() else str(x)
-                        )
-
-                        st.markdown(f"**{p_name}**")
-                        st.dataframe(p_df[['Rank', 'Time', 'Date']], hide_index=True, width="stretch")
-                else:
-                    st.write(t("pb_no_records"))
+                            # Safely format Time column
+                            p_df['Time'] = p_df['Time'].apply(
+                                lambda x: f"{float(x):.3f}s" if pd.notnull(x) and str(x).replace('.', '', 1).isdigit() else str(x)
+                            )
+                            st.dataframe(p_df[['Rank', 'Time', 'Date']], hide_index=True, width="stretch")
+                        else:
+                            st.write(t("pb_no_records"))
     else:
         st.write(t("pb_no_records"))
 
