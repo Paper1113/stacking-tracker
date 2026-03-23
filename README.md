@@ -49,8 +49,9 @@ A lightweight practice logging app built for Sport Stacking enthusiasts and pare
 - Displays the current player + mode selection clearly to reduce mis-taps
 
 ### 📜 Records Overview
-- Recent records are grouped by mode and collapsed by default
-- Expand any mode to view detailed attempts (timestamp, player, time, DNF marker)
+- Today's records are grouped by mode and show detailed attempts (timestamp, player, time, DNF marker)
+- Past records are grouped by **player → mode**, with both levels collapsed by default for cleaner browsing
+- Each past mode section shows a **daily summary**: Date, Total attempts (`Total (DNF: x)`), DNF rate, and Fastest completion
 - **Edit & Delete**: Modify or remove today's records from the main records section
 - Delete actions include an explicit confirmation step to prevent accidental removal
 
