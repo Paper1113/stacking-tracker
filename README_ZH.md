@@ -28,9 +28,10 @@
 - 每個「選手+項目」區塊都會顯示趨勢圖與 Top 5 成績
 
 ### 🛡️ 穩定性與快取管理
-- **手動重新整理**：側邊欄新增「重新整理」按鈕，讓使用者能隨時清空 Streamlit 快取並強制抓取雲端最新資料
-- **API 自動重試**：導入 `tenacity` 套件，所有與 Google Sheets 的連線遇到網路不穩時，皆會自動在背景安全重試（最多 3 次），避免 App 崩潰
-- **穩定記錄定位**：每筆資料會有唯一 `RecordId`，即使時間/選手/項目重複，修改與刪除仍可精準命中正確記錄
+- **記憶體狀態同步 (0 讀取次數優化)**：使用 Streamlit `session_state` 將資料集暫存在記憶體中。新增、更新與刪除紀錄時會直接在 UI 上即時變更，不再需要重新從資料庫讀取所有資料，大幅減少 API 成本與 UI 卡頓。
+- **手動重新整理**：側邊欄新增「重新整理」按鈕，讓使用者能隨時清空本地狀態並強制抓取雲端最新資料。
+- **API 自動重試**：導入 `tenacity` 套件，所有與 Google Sheets / Firestore 的連線遇到網路不穩時，皆會自動在背景安全重試（最多 3 次），避免 App 崩潰。
+- **穩定記錄定位**：每筆資料會有唯一 `RecordId`，即使時間/選手/項目重複，修改與刪除仍可精準命中正確記錄。
 
 ### 🔄 CI/CD 與自動化測試
 - 專案受 **GitHub Actions** 自動化工作流程保護
@@ -61,7 +62,9 @@
 
 ## 🛠️ 技術棧
 - **Frontend/Backend**: [Streamlit](https://streamlit.io/) 1.55+
-- **Database**: [Google Sheets](https://www.google.com/sheets/about/) (via `st-gsheets-connection`)
+- **Database (雙資料庫支援)**: 
+  - [Google Sheets](https://www.google.com/sheets/about/) (透過 `st-gsheets-connection`) - *預設*
+  - [Firestore](https://firebase.google.com/docs/firestore) (透過 `firebase-admin`) - *可選用*
 - **Resilience**: `tenacity` (API 自動重試)
 - **Testing**: `pytest`, GitHub Actions
 - **Language**: Python 3.9+
@@ -107,6 +110,10 @@
 ```toml
 [connections.gsheets]
 spreadsheet = "你的GoogleSheet網址"
+
+# 若要切換使用 Firestore，請將下列參數設為 true
+# (需要同時設定好 [firestore] 區塊憑證)
+use_firestore = true
 ```
 
 ### 3. 本地開發
@@ -127,6 +134,14 @@ mkdir .streamlit
 streamlit run streamlit_app.py
 ```
 
+## 🔥 Firestore 設定（正式遷移前）
+
+建議先完成 Firestore 基礎設定，再開始由 Google Sheets 遷移：
+
+1. 依照 [docs/firestore_setup.md](docs/firestore_setup.md) 操作
+2. 用 `secrets.example.toml` 建立 `.streamlit/secrets.toml`
+3. 執行 `scripts/firestore_smoke_test.py` 驗證連線
+
 ## 📁 專案結構
 
 ```text
@@ -143,9 +158,12 @@ stacking-tracker/
 │   ├── test_stats.py   # 針對 Ao5 與資料處理邏輯的 pytest
 │   └── test_record_id.py # RecordId 精準定位與相容性測試
 ├── utils/              # 獨立功能模組
-│   ├── data_manager.py # Google Sheets 連線與存取邏輯
-│   ├── i18n.py         # 語系載入與切換邏輯
-│   └── stats.py        # Ao5、PB 與每日進度計算邏輯
+│   ├── data_manager.py           # 資料庫後端路由器 (決定使用 GSheets 或 Firestore)
+│   ├── data_manager_gsheets.py   # Google Sheets 連線與存取邏輯
+│   ├── data_manager_firestore.py # Firestore 連線與存取邏輯
+│   ├── firestore_manager.py      # Firestore 用戶端初始化設定
+│   ├── i18n.py                   # 語系載入與切換邏輯
+│   └── stats.py                  # Ao5、PB 與每日進度計算邏輯
 ├── .streamlit/
 │   └── secrets.toml    # Google Sheets 連線設定 (不上傳)
 ├── README.md           # 英文說明文檔
