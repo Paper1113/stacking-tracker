@@ -116,7 +116,14 @@ st.markdown(t("subtitle"))
 
 # --- Data Loading ---
 conn = get_connection()
-df, valid_df = load_data(conn)
+
+if 'app_data_df' not in st.session_state or 'app_valid_df' not in st.session_state:
+    _df, _valid_df = load_data(conn)
+    st.session_state.app_data_df = _df.copy()
+    st.session_state.app_valid_df = _valid_df.copy()
+
+df = st.session_state.app_data_df
+valid_df = st.session_state.app_valid_df
 
 # For names fallback if Players sheet fails but Data sheet has names
 default_names_from_data = df["Name"].dropna().astype(str).str.strip().unique().tolist() if (not df.empty and "Name" in df.columns) else []
@@ -131,6 +138,10 @@ if 'last_name' in st.session_state and st.session_state.last_name not in names:
 st.sidebar.markdown("---")
 if st.sidebar.button(t("btn_refresh"), use_container_width=True):
     st.cache_data.clear()
+    if 'app_data_df' in st.session_state:
+        del st.session_state.app_data_df
+    if 'app_valid_df' in st.session_state:
+        del st.session_state.app_valid_df
     st.rerun()
 
 
@@ -240,14 +251,17 @@ def input_section():
             else:
                 # Immediate upload to cloud (original behavior)
                 try:
-                    save_record_to_cloud(conn, timestamp_str, name, mode, time_val, is_scratch)
+                    record_id = save_record_to_cloud(conn, timestamp_str, name, mode, time_val, is_scratch)
+
+                    new_row = {"Timestamp": timestamp_str, "Name": name, "Mode": mode, "Time": time_val, "IsScratch": is_scratch, "RecordId": record_id}
+                    st.session_state.app_data_df = pd.concat([st.session_state.app_data_df, pd.DataFrame([new_row])], ignore_index=True)
+                    if not is_scratch:
+                        st.session_state.app_valid_df = pd.concat([st.session_state.app_valid_df, pd.DataFrame([new_row])], ignore_index=True)
 
                     if is_scratch:
                         st.warning(t("msg_dnf", name=name, mode=mode, time=time_val))
                     else:
                         st.success(t("msg_success", name=name, mode=mode, time=time_val))
-
-                    st.cache_data.clear()
                     
                     st.session_state.last_name = name
                     st.session_state.last_mode = mode
@@ -273,11 +287,21 @@ def input_section():
             if st.button(t("btn_sync"), type="primary", use_container_width=True):
                 try:
                     with st.spinner(t("syncing")):
-                        sync_temp_logs_to_cloud(conn, st.session_state.temp_logs)
+                        import uuid
+                        new_rows = []
+                        for log in st.session_state.temp_logs:
+                            log['RecordId'] = log.get('RecordId') or str(uuid.uuid4())
+                            new_rows.append(log)
+                            
+                        sync_temp_logs_to_cloud(conn, new_rows)
+                        
+                        st.session_state.app_data_df = pd.concat([st.session_state.app_data_df, pd.DataFrame(new_rows)], ignore_index=True)
+                        valid_logs = [log for log in new_rows if not log.get('IsScratch', False)]
+                        if valid_logs:
+                            st.session_state.app_valid_df = pd.concat([st.session_state.app_valid_df, pd.DataFrame(valid_logs)], ignore_index=True)
 
                         st.session_state.temp_logs = []
                         st.success(t("msg_synced"))
-                        st.cache_data.clear()
                         st.rerun()
                 except Exception as e:
                     st.error(t("sync_fail", err=e))
@@ -453,8 +477,16 @@ if not df.empty:
                                     new_scratch,
                                     record_id=orig_record_id
                                 )
+                                
+                                mask = st.session_state.app_data_df['RecordId'] == orig_record_id
+                                st.session_state.app_data_df.loc[mask, 'Time'] = new_time_val
+                                st.session_state.app_data_df.loc[mask, 'IsScratch'] = new_scratch
+                                
+                                st.session_state.app_valid_df = st.session_state.app_data_df[
+                                    (st.session_state.app_data_df['Time'].notnull()) & (~st.session_state.app_data_df['IsScratch'])
+                                ]
+                                
                                 st.success(t("msg_update_success"))
-                                st.cache_data.clear()
                                 st.rerun()
                             except Exception as e:
                                 st.error(f"Error: {e}")
@@ -481,9 +513,12 @@ if not df.empty:
                                     orig_mode,
                                     record_id=orig_record_id
                                 )
+                                
+                                st.session_state.app_data_df = st.session_state.app_data_df[st.session_state.app_data_df['RecordId'] != orig_record_id]
+                                st.session_state.app_valid_df = st.session_state.app_valid_df[st.session_state.app_valid_df['RecordId'] != orig_record_id]
+                                
                                 st.session_state[pending_delete_key] = None
                                 st.success(t("msg_delete_success"))
-                                st.cache_data.clear()
                                 st.rerun()
                             except Exception as e:
                                 st.error(f"Error: {e}")

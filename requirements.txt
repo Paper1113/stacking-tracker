@@ -3,3 +3,4 @@ st-gsheets-connection
 pandas
 pytest==8.3.3
 tenacity
+firebase-admin

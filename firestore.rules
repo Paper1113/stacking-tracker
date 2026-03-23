@@ -1,0 +1,11 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Streamlit server uses Firebase Admin SDK (bypasses rules).
+    // Keep client SDK access denied by default until you explicitly need it.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
+
