@@ -11,7 +11,12 @@ from utils.data_manager import (
     update_record_in_cloud, delete_record_from_cloud,
     TIMEZONE
 )
-from utils.stats import prepare_ao5_data, prepare_pb_data, prepare_daily_progress_data
+from utils.stats import (
+    prepare_ao5_data,
+    prepare_pb_data,
+    prepare_daily_progress_data,
+    iter_records_grouped_by_name_and_mode,
+)
 
 _decimal_input_func = components.declare_component(
     "decimal_input",
@@ -402,14 +407,15 @@ if not df.empty:
 
     if not today_records.empty:
         st.markdown(f"### {t('records_today', date=today_str)}")
-        for mode in sorted(today_records['Mode'].dropna().unique()):
-            mode_records = today_records[today_records['Mode'] == mode].copy().reset_index(drop=True)
-            with st.expander(t("records_mode_group", mode=mode), expanded=False):
-                st.dataframe(
-                    mode_records[['Timestamp', 'Name', 'TimeDisplay']],
-                    hide_index=True,
-                    width="stretch"
-                )
+        for name, mode_groups in iter_records_grouped_by_name_and_mode(today_records):
+            with st.expander(t("records_player_group", name=name), expanded=False):
+                for mode, mode_records in mode_groups:
+                    with st.expander(t("records_mode_group", mode=mode), expanded=False):
+                        st.dataframe(
+                            mode_records[['Timestamp', 'Name', 'TimeDisplay']],
+                            hide_index=True,
+                            width="stretch"
+                        )
 
         st.write("")
         with st.expander(t("records_edit_header"), expanded=False):
@@ -533,11 +539,9 @@ if not df.empty:
 
     if not past_records.empty:
         st.markdown(f"### {t('records_past')}")
-        for name in sorted(past_records['Name'].dropna().unique()):
-            player_records = past_records[past_records['Name'] == name].copy().reset_index(drop=True)
+        for name, mode_groups in iter_records_grouped_by_name_and_mode(past_records):
             with st.expander(t("records_player_group", name=name), expanded=False):
-                for mode in sorted(player_records['Mode'].dropna().unique()):
-                    mode_records = player_records[player_records['Mode'] == mode].copy().reset_index(drop=True)
+                for mode, mode_records in mode_groups:
                     with st.expander(t("records_mode_group", mode=mode), expanded=False):
                         mode_records['TimestampDT'] = pd.to_datetime(mode_records['Timestamp'], errors='coerce')
                         if 'IsScratch' not in mode_records.columns:

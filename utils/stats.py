@@ -3,7 +3,7 @@ from datetime import datetime
 from utils.data_manager import TIMEZONE
 from utils.i18n import t
 
-from typing import Optional
+from typing import List, Optional, Tuple
 
 def calculate_ao5(group: pd.DataFrame) -> Optional[float]:
     """Calculate Ao5: drop best and worst from last 5, average middle 3."""
@@ -12,6 +12,22 @@ def calculate_ao5(group: pd.DataFrame) -> Optional[float]:
         last_5.sort()
         return sum(last_5[1:4]) / 3
     return None
+
+def iter_records_grouped_by_name_and_mode(records_df: pd.DataFrame) -> List[Tuple[str, List[Tuple[str, pd.DataFrame]]]]:
+    """Return records grouped in sorted player -> mode order for UI rendering."""
+    grouped_records = []
+    if records_df.empty:
+        return grouped_records
+
+    for name in sorted(records_df['Name'].dropna().unique()):
+        player_records = records_df[records_df['Name'] == name].copy().reset_index(drop=True)
+        mode_groups = []
+        for mode in sorted(player_records['Mode'].dropna().unique()):
+            mode_records = player_records[player_records['Mode'] == mode].copy().reset_index(drop=True)
+            mode_groups.append((mode, mode_records))
+        grouped_records.append((name, mode_groups))
+
+    return grouped_records
 
 def prepare_ao5_data(valid_df_sorted: pd.DataFrame) -> pd.DataFrame:
     """Prepare Ao5 DataFrame."""

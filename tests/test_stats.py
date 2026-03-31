@@ -6,7 +6,7 @@ import os
 # Add project root to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from utils.stats import calculate_ao5
+from utils.stats import calculate_ao5, iter_records_grouped_by_name_and_mode
 
 def test_calculate_ao5_less_than_5_records():
     """Test that Ao5 returns None if there are fewer than 5 records."""
@@ -32,3 +32,23 @@ def test_calculate_ao5_more_than_5_records():
     # Average: (3.5 + 3.6 + 3.8) / 3 = 10.9 / 3 = 3.633...
     df = pd.DataFrame({"Time": [0.0, 3.5, 9.9, 3.6, 3.8, 1.0]})
     assert pytest.approx(calculate_ao5(df), 0.001) == 3.633
+
+def test_iter_records_grouped_by_name_and_mode_groups_in_sorted_order():
+    df = pd.DataFrame([
+        {"Name": "B", "Mode": "Cycle", "Timestamp": "2026-03-31 10:00:00"},
+        {"Name": "A", "Mode": "3-6-3", "Timestamp": "2026-03-31 10:01:00"},
+        {"Name": "A", "Mode": "Cycle", "Timestamp": "2026-03-31 10:02:00"},
+        {"Name": "B", "Mode": "3-6-3", "Timestamp": "2026-03-31 10:03:00"},
+    ])
+
+    grouped = iter_records_grouped_by_name_and_mode(df)
+
+    assert [name for name, _ in grouped] == ["A", "B"]
+    assert [mode for mode, _ in grouped[0][1]] == ["3-6-3", "Cycle"]
+    assert [mode for mode, _ in grouped[1][1]] == ["3-6-3", "Cycle"]
+    assert grouped[0][1][0][1]["Name"].tolist() == ["A"]
+    assert grouped[1][1][1][1]["Name"].tolist() == ["B"]
+
+def test_iter_records_grouped_by_name_and_mode_returns_empty_for_empty_input():
+    df = pd.DataFrame(columns=["Name", "Mode", "Timestamp"])
+    assert iter_records_grouped_by_name_and_mode(df) == []
