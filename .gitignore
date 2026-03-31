@@ -17,3 +17,4 @@ __pycache__/
 .DS_Store
 .env
 test_html.py
+.gstack/
