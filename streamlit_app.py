@@ -249,19 +249,20 @@ def input_section():
             st.error(t("err_invalid_time"))
         else:
             timestamp_str = get_current_timestamp()
+            pb_rank = None
+            if not is_scratch:
+                # Keep PB notifications consistent across fast-mode and immediate uploads:
+                # always rank against persisted valid rows + unsynced valid temp logs.
+                pending_valid_logs = [log for log in st.session_state.temp_logs if not log.get('IsScratch', False)]
+                pending_valid_df = pd.DataFrame(pending_valid_logs)
+                rank_source_df = st.session_state.app_valid_df.copy()
+                if not pending_valid_df.empty:
+                    rank_source_df = pd.concat([rank_source_df, pending_valid_df], ignore_index=True)
+                pb_rank = get_personal_pb_rank(rank_source_df, name, mode, time_val, timestamp_str)
 
             # Save to temp pool or upload to cloud
             if use_fast_mode:
                 # Save to temp pool (instant, no network call)
-                pb_rank = None
-                if not is_scratch:
-                    pending_valid_logs = [log for log in st.session_state.temp_logs if not log.get('IsScratch', False)]
-                    pending_valid_df = pd.DataFrame(pending_valid_logs)
-                    rank_source_df = st.session_state.app_valid_df.copy()
-                    if not pending_valid_df.empty:
-                        rank_source_df = pd.concat([rank_source_df, pending_valid_df], ignore_index=True)
-                    pb_rank = get_personal_pb_rank(rank_source_df, name, mode, time_val, timestamp_str)
-
                 st.session_state.temp_logs.append({
                     "Timestamp": timestamp_str,
                     "Name": name,
@@ -284,9 +285,6 @@ def input_section():
                 # Immediate upload to cloud (original behavior)
                 try:
                     record_id = save_record_to_cloud(conn, timestamp_str, name, mode, time_val, is_scratch)
-                    pb_rank = None
-                    if not is_scratch:
-                        pb_rank = get_personal_pb_rank(st.session_state.app_valid_df, name, mode, time_val, timestamp_str)
 
                     new_row = {"Timestamp": timestamp_str, "Name": name, "Mode": mode, "Time": time_val, "IsScratch": is_scratch, "RecordId": record_id}
                     st.session_state.app_data_df = pd.concat([st.session_state.app_data_df, pd.DataFrame([new_row])], ignore_index=True)

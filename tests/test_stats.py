@@ -90,3 +90,25 @@ def test_get_personal_pb_rank_returns_rank_when_candidate_is_top5():
     assert get_personal_pb_rank(valid_df, "Johnny", "3-6-3", 5.45, "2026-03-31 09:00:00") == 1
     assert get_personal_pb_rank(valid_df, "Johnny", "3-6-3", 5.75, "2026-03-31 09:01:00") == 4
     assert get_personal_pb_rank(valid_df, "Johnny", "3-6-3", 6.10, "2026-03-31 09:02:00") is None
+
+def test_get_personal_pb_rank_considers_pending_valid_attempts_in_rank_source():
+    persisted_df = pd.DataFrame([
+        {"Name": "Johnny", "Mode": "3-3-3", "Time": 5.00, "Timestamp": "2026-03-30 10:00:00"},
+        {"Name": "Johnny", "Mode": "3-3-3", "Time": 5.10, "Timestamp": "2026-03-30 10:01:00"},
+        {"Name": "Johnny", "Mode": "3-3-3", "Time": 5.20, "Timestamp": "2026-03-30 10:02:00"},
+        {"Name": "Johnny", "Mode": "3-3-3", "Time": 5.30, "Timestamp": "2026-03-30 10:03:00"},
+        {"Name": "Johnny", "Mode": "3-3-3", "Time": 5.40, "Timestamp": "2026-03-30 10:04:00"},
+    ])
+    pending_valid_df = pd.DataFrame([
+        {"Name": "Johnny", "Mode": "3-3-3", "Time": 4.80, "Timestamp": "2026-03-31 09:30:00"},
+        {"Name": "Johnny", "Mode": "3-3-3", "Time": 4.90, "Timestamp": "2026-03-31 09:31:00"},
+    ])
+
+    merged_rank_source_df = pd.concat([persisted_df, pending_valid_df], ignore_index=True)
+
+    assert get_personal_pb_rank(
+        persisted_df, "Johnny", "3-3-3", 5.35, "2026-03-31 10:00:00"
+    ) == 5
+    assert get_personal_pb_rank(
+        merged_rank_source_df, "Johnny", "3-3-3", 5.35, "2026-03-31 10:00:00"
+    ) is None
