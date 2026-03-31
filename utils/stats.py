@@ -140,8 +140,9 @@ def prepare_daily_progress_data(df: pd.DataFrame, goals_df: pd.DataFrame) -> pd.
         return pd.DataFrame()
 
     today_str = datetime.now(TIMEZONE).strftime("%Y-%m-%d")
-    df['DateStr'] = pd.to_datetime(df['Timestamp'], errors='coerce').dt.strftime('%Y-%m-%d')
-    today_df = df[df['DateStr'] == today_str].copy()
+    df_copy = df.copy()
+    df_copy['DateStr'] = pd.to_datetime(df_copy['Timestamp'], errors='coerce').dt.strftime('%Y-%m-%d')
+    today_df = df_copy[df_copy['DateStr'] == today_str].copy()
 
     progress_data = []
     if not today_df.empty and not goals_df.empty:

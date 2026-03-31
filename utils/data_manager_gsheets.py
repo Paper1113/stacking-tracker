@@ -19,6 +19,20 @@ def get_connection():
 def _read_with_retry(conn, worksheet):
     return conn.read(worksheet=worksheet, ttl=DATA_TTL)
 
+def _get_data_worksheet(conn):
+    """Open and return the Data worksheet using the safest available client API."""
+    url = st.secrets.connections.gsheets.spreadsheet
+    client = getattr(conn, "client", None)
+    if client is None:
+        raise RuntimeError("GSheets connection client is unavailable.")
+
+    candidates = [client, getattr(client, "_client", None)]
+    for candidate in candidates:
+        if candidate is not None and hasattr(candidate, "open_by_url"):
+            return candidate.open_by_url(url).worksheet("Data")
+
+    raise RuntimeError("Unable to open Google Sheets client (no open_by_url method found).")
+
 def load_data(conn):
     """
     Read data from the "Data" worksheet.
@@ -42,19 +56,34 @@ def load_data(conn):
         df["Time"] = pd.to_numeric(df["Time"], errors='coerce')
 
         # Ensure RecordId exists for robust update/delete targeting.
-        # For legacy rows without RecordId in the sheet, we generate a row-based fallback ID.
+        # For legacy/missing rows, try to backfill stable UUIDs to the sheet.
         if RECORD_ID_COL not in df.columns:
             df[RECORD_ID_COL] = [f"{LEGACY_ROW_PREFIX}{i + 2}" for i in range(len(df))]
         else:
-            missing_mask = (
-                df[RECORD_ID_COL].isna()
-                | (df[RECORD_ID_COL].astype(str).str.strip() == "")
-                | (df[RECORD_ID_COL].astype(str).str.lower() == "nan")
-            )
-            df.loc[missing_mask, RECORD_ID_COL] = [
-                f"{LEGACY_ROW_PREFIX}{i + 2}" for i in df.index[missing_mask]
-            ]
             df[RECORD_ID_COL] = df[RECORD_ID_COL].astype(str)
+
+        missing_mask = (
+            df[RECORD_ID_COL].isna()
+            | (df[RECORD_ID_COL].astype(str).str.strip() == "")
+            | (df[RECORD_ID_COL].astype(str).str.lower() == "nan")
+            | (df[RECORD_ID_COL].astype(str).str.startswith(LEGACY_ROW_PREFIX))
+        )
+        df.loc[missing_mask, RECORD_ID_COL] = [
+            f"{LEGACY_ROW_PREFIX}{i + 2}" for i in df.index[missing_mask]
+        ]
+        df[RECORD_ID_COL] = df[RECORD_ID_COL].astype(str)
+
+        if missing_mask.any():
+            try:
+                ws = _get_data_worksheet(conn)
+                record_id_col_idx = _ensure_record_id_header(ws)
+                for row_num in (df.index[missing_mask] + 2).tolist():
+                    stable_id = str(uuid.uuid4())
+                    ws.update_cell(int(row_num), int(record_id_col_idx), stable_id)
+                    df.at[int(row_num) - 2, RECORD_ID_COL] = stable_id
+            except Exception:
+                # If backfill fails, keep legacy fallback IDs for compatibility.
+                pass
         
         # Build a filtered DataFrame excluding scratched (DNF) records
         valid_df = df[(df["Time"].notnull()) & (~df["IsScratch"])].copy()
@@ -124,8 +153,7 @@ def _ensure_record_id_header(ws):
 
 def save_record_to_cloud(conn, timestamp_str, name, mode, time_val, is_scratch, record_id=None):
     """Save a single record directly to Google Sheets."""
-    url = st.secrets.connections.gsheets.spreadsheet
-    ws = conn.client._client.open_by_url(url).worksheet("Data")
+    ws = _get_data_worksheet(conn)
     _ensure_record_id_header(ws)
     if not record_id:
         record_id = str(uuid.uuid4())
@@ -138,8 +166,7 @@ def save_record_to_cloud(conn, timestamp_str, name, mode, time_val, is_scratch, 
 
 def sync_temp_logs_to_cloud(conn, temp_logs):
     """Sync an array of temp logs to Google Sheets using batch append_rows."""
-    url = st.secrets.connections.gsheets.spreadsheet
-    ws = conn.client._client.open_by_url(url).worksheet("Data")
+    ws = _get_data_worksheet(conn)
     _ensure_record_id_header(ws)
 
     rows_data = [
@@ -169,7 +196,13 @@ def _find_row_index(ws, timestamp_str=None, name=None, mode=None, record_id=None
             try:
                 legacy_row_idx = int(record_id.replace(LEGACY_ROW_PREFIX, "", 1))
                 if 2 <= legacy_row_idx <= len(all_values):
-                    return legacy_row_idx
+                    if timestamp_str is None and name is None and mode is None:
+                        return legacy_row_idx
+                    row = all_values[legacy_row_idx - 1]
+                    if len(row) >= 3:
+                        r_ts, r_name, r_mode = row[0], row[1], row[2].lstrip("'")
+                        if r_ts == timestamp_str and r_name == name and r_mode == mode:
+                            return legacy_row_idx
             except ValueError:
                 pass
 
@@ -194,8 +227,7 @@ def _find_row_index(ws, timestamp_str=None, name=None, mode=None, record_id=None
 
 def update_record_in_cloud(conn, timestamp_str, name, mode, new_time_val, is_scratch, record_id=None):
     """Update a specific record in Google Sheets."""
-    url = st.secrets.connections.gsheets.spreadsheet
-    ws = conn.client._client.open_by_url(url).worksheet("Data")
+    ws = _get_data_worksheet(conn)
     
     row_idx = _find_row_index(ws, timestamp_str, name, mode, record_id)
     if row_idx is None:
@@ -207,8 +239,7 @@ def update_record_in_cloud(conn, timestamp_str, name, mode, new_time_val, is_scr
 
 def delete_record_from_cloud(conn, timestamp_str, name, mode, record_id=None):
     """Delete a specific record from Google Sheets."""
-    url = st.secrets.connections.gsheets.spreadsheet
-    ws = conn.client._client.open_by_url(url).worksheet("Data")
+    ws = _get_data_worksheet(conn)
     
     row_idx = _find_row_index(ws, timestamp_str, name, mode, record_id)
     if row_idx is None:

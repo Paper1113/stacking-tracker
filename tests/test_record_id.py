@@ -56,3 +56,20 @@ def test_find_row_index_falls_back_to_composite_match():
         mode="3-3-3"
     )
     assert row_idx == 2
+
+
+def test_find_row_index_legacy_id_mismatch_falls_back_to_composite():
+    ws = DummyWorksheet([
+        ["Timestamp", "Name", "Mode", "Time", "IsScratch"],
+        ["2026-03-20 10:10:00", "Ashley", "'3-3-3", "3.111", "FALSE"],
+        ["2026-03-20 10:10:10", "Johnny", "'3-3-3", "3.222", "FALSE"],
+    ])
+
+    row_idx = _find_row_index(
+        ws,
+        timestamp_str="2026-03-20 10:10:10",
+        name="Johnny",
+        mode="3-3-3",
+        record_id="legacy-row-2",
+    )
+    assert row_idx == 3

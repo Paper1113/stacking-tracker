@@ -1,5 +1,4 @@
 import streamlit as st
-import streamlit.components.v1 as components
 import json
 import os
 
@@ -20,29 +19,31 @@ with open(os.path.join(PROJECT_ROOT, "i18n.json"), "r", encoding="utf-8") as f:
 
 def t(key, **kwargs):
     """Get translated string for the current language."""
-    text = TRANSLATIONS.get(st.session_state.lang, TRANSLATIONS["zh-TW"]).get(key, key)
+    lang = st.session_state.get("lang", "zh-TW")
+    text = TRANSLATIONS.get(lang, TRANSLATIONS["zh-TW"]).get(key, key)
     return text.format(**kwargs) if kwargs else text
 
-
+def _detect_browser_language():
+    """
+    Detect browser language from request headers.
+    Returns 'zh-TW' for Chinese locales, otherwise 'en'.
+    """
+    try:
+        headers = getattr(st.context, "headers", {}) or {}
+        accept_lang = headers.get("Accept-Language") or headers.get("accept-language") or ""
+        normalized = str(accept_lang).strip().lower()
+        if normalized.startswith("zh") or ",zh" in normalized:
+            return "zh-TW"
+        if normalized:
+            return "en"
+    except Exception:
+        pass
+    return "zh-TW"
 
 def setup_language_selector():
-    """Injects JS language detection and sets up sidebar selection."""
-    if 'lang_detected' not in st.session_state:
-        st.session_state.lang_detected = False
+    """Set up language using browser detection on first load + manual override selector."""
     if 'lang' not in st.session_state:
-        st.session_state.lang = "zh-TW"  # Default to Traditional Chinese
-
-    # Inject JS to detect browser language (only on first load)
-    if not st.session_state.lang_detected:
-        components.html("""
-        <script>
-        const lang = navigator.language || navigator.userLanguage || 'zh-TW';
-        const isZh = lang.startsWith('zh');
-        // Send result to Streamlit via query params workaround
-        window.parent.postMessage({type: 'streamlit:setComponentValue', value: isZh ? 'zh-TW' : 'en'}, '*');
-        </script>
-        """, height=0)
-        st.session_state.lang_detected = True
+        st.session_state.lang = _detect_browser_language()
 
     # Language selector in sidebar
     LANG_OPTIONS = {"繁體中文": "zh-TW", "English": "en"}
