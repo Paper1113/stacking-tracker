@@ -309,10 +309,12 @@ def input_section():
                 except Exception as e:
                     st.error(t("err_save_fail", err=e))
 
-    # --- Temp Pool Display & Sync (only when fast mode is used) ---
-    if st.session_state.temp_logs and st.session_state.fast_mode:
+    # --- Temp Pool Display & Sync ---
+    if st.session_state.temp_logs:
         st.divider()
         st.subheader(t("temp_pool"))
+        if not st.session_state.fast_mode:
+            st.caption(t("temp_pool_unsynced_note"))
 
         temp_df = pd.DataFrame(st.session_state.temp_logs)
         temp_df['TimeDisplay'] = temp_df.apply(

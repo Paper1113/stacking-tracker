@@ -8,6 +8,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 
 from utils.stats import calculate_ao5, iter_records_grouped_by_name_and_mode
 from utils.stats import prepare_today_top5_data, get_personal_pb_rank
+from utils.stats import prepare_daily_progress_data
 from utils.data_manager import TIMEZONE
 from datetime import datetime, timedelta
 
@@ -112,3 +113,17 @@ def test_get_personal_pb_rank_considers_pending_valid_attempts_in_rank_source():
     assert get_personal_pb_rank(
         merged_rank_source_df, "Johnny", "3-3-3", 5.35, "2026-03-31 10:00:00"
     ) is None
+
+
+def test_prepare_daily_progress_data_does_not_mutate_input_df():
+    today = datetime.now(TIMEZONE).strftime("%Y-%m-%d")
+    df = pd.DataFrame([
+        {"Timestamp": f"{today} 10:00:00", "Name": "Johnny", "Mode": "3-3-3", "Time": 3.2, "IsScratch": False},
+    ])
+    goals_df = pd.DataFrame([
+        {"Name": "Johnny", "Mode": "3-3-3", "TargetTime": 3.5},
+    ])
+
+    _ = prepare_daily_progress_data(df, goals_df)
+
+    assert "DateStr" not in df.columns
