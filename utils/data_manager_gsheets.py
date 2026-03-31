@@ -56,34 +56,19 @@ def load_data(conn):
         df["Time"] = pd.to_numeric(df["Time"], errors='coerce')
 
         # Ensure RecordId exists for robust update/delete targeting.
-        # For legacy/missing rows, try to backfill stable UUIDs to the sheet.
+        # For legacy rows without RecordId in the sheet, generate row-based fallback ID in memory.
         if RECORD_ID_COL not in df.columns:
             df[RECORD_ID_COL] = [f"{LEGACY_ROW_PREFIX}{i + 2}" for i in range(len(df))]
         else:
+            missing_mask = (
+                df[RECORD_ID_COL].isna()
+                | (df[RECORD_ID_COL].astype(str).str.strip() == "")
+                | (df[RECORD_ID_COL].astype(str).str.lower() == "nan")
+            )
+            df.loc[missing_mask, RECORD_ID_COL] = [
+                f"{LEGACY_ROW_PREFIX}{i + 2}" for i in df.index[missing_mask]
+            ]
             df[RECORD_ID_COL] = df[RECORD_ID_COL].astype(str)
-
-        missing_mask = (
-            df[RECORD_ID_COL].isna()
-            | (df[RECORD_ID_COL].astype(str).str.strip() == "")
-            | (df[RECORD_ID_COL].astype(str).str.lower() == "nan")
-            | (df[RECORD_ID_COL].astype(str).str.startswith(LEGACY_ROW_PREFIX))
-        )
-        df.loc[missing_mask, RECORD_ID_COL] = [
-            f"{LEGACY_ROW_PREFIX}{i + 2}" for i in df.index[missing_mask]
-        ]
-        df[RECORD_ID_COL] = df[RECORD_ID_COL].astype(str)
-
-        if missing_mask.any():
-            try:
-                ws = _get_data_worksheet(conn)
-                record_id_col_idx = _ensure_record_id_header(ws)
-                for row_num in (df.index[missing_mask] + 2).tolist():
-                    stable_id = str(uuid.uuid4())
-                    ws.update_cell(int(row_num), int(record_id_col_idx), stable_id)
-                    df.at[int(row_num) - 2, RECORD_ID_COL] = stable_id
-            except Exception:
-                # If backfill fails, keep legacy fallback IDs for compatibility.
-                pass
         
         # Build a filtered DataFrame excluding scratched (DNF) records
         valid_df = df[(df["Time"].notnull()) & (~df["IsScratch"])].copy()
