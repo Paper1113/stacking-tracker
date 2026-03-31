@@ -4,14 +4,12 @@ import pandas as pd
 from datetime import datetime
 from zoneinfo import ZoneInfo
 import uuid
-import time
 from tenacity import retry, stop_after_attempt, wait_fixed
 from utils.i18n import t, DATA_TTL, DEFAULT_PLAYERS
 
 TIMEZONE = ZoneInfo("Asia/Hong_Kong")
 RECORD_ID_COL = "RecordId"
 LEGACY_ROW_PREFIX = "legacy-row-"
-BACKFILL_RETRY_COOLDOWN_SECONDS = 120
 
 def get_connection():
     """Establish and return the Google Sheets connection."""
@@ -34,75 +32,6 @@ def _get_data_worksheet(conn):
             return candidate.open_by_url(url).worksheet("Data")
 
     raise RuntimeError("Unable to open Google Sheets client (no open_by_url method found).")
-
-def _col_idx_to_letter(col_idx):
-    """Convert 1-based column index to A1 column letters."""
-    letters = ""
-    while col_idx > 0:
-        col_idx, remainder = divmod(col_idx - 1, 26)
-        letters = chr(65 + remainder) + letters
-    return letters
-
-def _get_backfill_retry_at():
-    """Read backfill retry timestamp from session state if available."""
-    try:
-        return float(st.session_state.get("_record_id_backfill_retry_at", 0))
-    except Exception:
-        return 0
-
-def _set_backfill_retry_after(seconds):
-    """Set backfill retry cooldown in session state (best effort)."""
-    try:
-        st.session_state["_record_id_backfill_retry_at"] = time.time() + seconds
-    except Exception:
-        pass
-
-def _maybe_backfill_record_ids(conn, df):
-    """
-    Best-effort RecordId backfill for legacy rows.
-    Uses a single column update request to avoid per-row write bursts.
-    """
-    missing_mask = (
-        df[RECORD_ID_COL].isna()
-        | (df[RECORD_ID_COL].astype(str).str.strip() == "")
-        | (df[RECORD_ID_COL].astype(str).str.lower() == "nan")
-        | (df[RECORD_ID_COL].astype(str).str.startswith(LEGACY_ROW_PREFIX))
-    )
-    df.loc[missing_mask, RECORD_ID_COL] = [
-        f"{LEGACY_ROW_PREFIX}{i + 2}" for i in df.index[missing_mask]
-    ]
-    df[RECORD_ID_COL] = df[RECORD_ID_COL].astype(str)
-
-    if not missing_mask.any():
-        return
-    if time.time() < _get_backfill_retry_at():
-        return
-
-    try:
-        ws = _get_data_worksheet(conn)
-        record_id_col_idx = _ensure_record_id_header(ws)
-        values = []
-        for record_id in df[RECORD_ID_COL].astype(str).tolist():
-            if (
-                not record_id.strip()
-                or record_id.lower() == "nan"
-                or record_id.startswith(LEGACY_ROW_PREFIX)
-            ):
-                values.append(str(uuid.uuid4()))
-            else:
-                values.append(record_id)
-
-        col_letter = _col_idx_to_letter(record_id_col_idx)
-        ws.update(
-            f"{col_letter}2:{col_letter}{len(values) + 1}",
-            [[v] for v in values],
-            value_input_option="RAW",
-        )
-        df[RECORD_ID_COL] = pd.Series(values, index=df.index, dtype="string").astype(str)
-    except Exception as e:
-        err_text = str(e)
-        if "429" in err_text or "RATE_LIMIT_EXCEEDED" in err_text:
-            _set_backfill_retry_after(BACKFILL_RETRY_COOLDOWN_SECONDS)
 
 def load_data(conn):
     """
@@ -127,12 +56,19 @@ def load_data(conn):
         df["Time"] = pd.to_numeric(df["Time"], errors='coerce')
 
         # Ensure RecordId exists for robust update/delete targeting.
-        # For legacy/missing rows, try to backfill stable UUIDs to the sheet.
+        # For legacy rows without RecordId in the sheet, generate row-based fallback ID in memory.
         if RECORD_ID_COL not in df.columns:
             df[RECORD_ID_COL] = [f"{LEGACY_ROW_PREFIX}{i + 2}" for i in range(len(df))]
         else:
+            missing_mask = (
+                df[RECORD_ID_COL].isna()
+                | (df[RECORD_ID_COL].astype(str).str.strip() == "")
+                | (df[RECORD_ID_COL].astype(str).str.lower() == "nan")
+            )
+            df.loc[missing_mask, RECORD_ID_COL] = [
+                f"{LEGACY_ROW_PREFIX}{i + 2}" for i in df.index[missing_mask]
+            ]
             df[RECORD_ID_COL] = df[RECORD_ID_COL].astype(str)
-        _maybe_backfill_record_ids(conn, df)
         
         # Build a filtered DataFrame excluding scratched (DNF) records
         valid_df = df[(df["Time"].notnull()) & (~df["IsScratch"])].copy()
