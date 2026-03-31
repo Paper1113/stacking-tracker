@@ -16,6 +16,8 @@ from utils.stats import (
     prepare_pb_data,
     prepare_daily_progress_data,
     iter_records_grouped_by_name_and_mode,
+    prepare_today_top5_data,
+    get_personal_pb_rank,
 )
 
 _decimal_input_func = components.declare_component(
@@ -25,6 +27,16 @@ _decimal_input_func = components.declare_component(
 
 def decimal_input(key=None, value=None):
     return _decimal_input_func(key=key, default=value, value=value)
+
+def queue_toast(message: str, icon: str = "ℹ️"):
+    if 'pending_toasts' not in st.session_state:
+        st.session_state.pending_toasts = []
+    st.session_state.pending_toasts.append({"message": message, "icon": icon})
+
+def flush_queued_toasts():
+    pending_toasts = st.session_state.pop("pending_toasts", [])
+    for toast in pending_toasts:
+        st.toast(toast.get("message", ""), icon=toast.get("icon", "ℹ️"))
 
 # Page configuration (responsive layout for mobile)
 st.set_page_config(page_title="Stacking Tracker", layout="centered")
@@ -118,6 +130,7 @@ div.st-key-submit_buttons_row div[data-testid="stHorizontalBlock"] > div[data-te
 
 st.title("⏱️ Stacking Tracker")
 st.markdown(t("subtitle"))
+flush_queued_toasts()
 
 # --- Data Loading ---
 conn = get_connection()
@@ -240,6 +253,15 @@ def input_section():
             # Save to temp pool or upload to cloud
             if use_fast_mode:
                 # Save to temp pool (instant, no network call)
+                pb_rank = None
+                if not is_scratch:
+                    pending_valid_logs = [log for log in st.session_state.temp_logs if not log.get('IsScratch', False)]
+                    pending_valid_df = pd.DataFrame(pending_valid_logs)
+                    rank_source_df = st.session_state.app_valid_df.copy()
+                    if not pending_valid_df.empty:
+                        rank_source_df = pd.concat([rank_source_df, pending_valid_df], ignore_index=True)
+                    pb_rank = get_personal_pb_rank(rank_source_df, name, mode, time_val, timestamp_str)
+
                 st.session_state.temp_logs.append({
                     "Timestamp": timestamp_str,
                     "Name": name,
@@ -247,7 +269,12 @@ def input_section():
                     "Time": time_val,
                     "IsScratch": is_scratch
                 })
-                st.toast(t("msg_added", time=f"{time_val:.3f}"), icon="⏱️")
+                queue_toast(t("msg_added", time=f"{time_val:.3f}"), icon="⏱️")
+                if pb_rank is not None:
+                    queue_toast(
+                        t("msg_pb_rank", name=name, mode=mode, time=f"{time_val:.3f}", rank=pb_rank),
+                        icon="🏆"
+                    )
                 
                 st.session_state.last_name = name
                 st.session_state.last_mode = mode
@@ -257,6 +284,9 @@ def input_section():
                 # Immediate upload to cloud (original behavior)
                 try:
                     record_id = save_record_to_cloud(conn, timestamp_str, name, mode, time_val, is_scratch)
+                    pb_rank = None
+                    if not is_scratch:
+                        pb_rank = get_personal_pb_rank(st.session_state.app_valid_df, name, mode, time_val, timestamp_str)
 
                     new_row = {"Timestamp": timestamp_str, "Name": name, "Mode": mode, "Time": time_val, "IsScratch": is_scratch, "RecordId": record_id}
                     st.session_state.app_data_df = pd.concat([st.session_state.app_data_df, pd.DataFrame([new_row])], ignore_index=True)
@@ -267,6 +297,11 @@ def input_section():
                         st.warning(t("msg_dnf", name=name, mode=mode, time=time_val))
                     else:
                         st.success(t("msg_success", name=name, mode=mode, time=time_val))
+                        if pb_rank is not None:
+                            queue_toast(
+                                t("msg_pb_rank", name=name, mode=mode, time=f"{time_val:.3f}", rank=pb_rank),
+                                icon="🏆"
+                            )
                     
                     st.session_state.last_name = name
                     st.session_state.last_mode = mode
@@ -327,9 +362,15 @@ valid_df_sorted = valid_df.sort_values(by='Timestamp') if not valid_df.empty els
 ao5_df = prepare_ao5_data(valid_df_sorted)
 pb_df = prepare_pb_data(valid_df)
 progress_df = prepare_daily_progress_data(df, goals_df)
+today_top5_df = prepare_today_top5_data(df)
 
 # Create tabs for stats
-tab_daily, tab_ao5, tab_pb = st.tabs([t("daily_header"), t("ao5_header"), t("pb_header")])
+tab_daily, tab_today_top5, tab_ao5, tab_pb = st.tabs([
+    t("daily_header"),
+    t("today_top5_header"),
+    t("ao5_header"),
+    t("pb_header")
+])
 
 with tab_daily:
     if not progress_df.empty:
@@ -344,6 +385,32 @@ with tab_daily:
             st.info(t("daily_no_goals_sheet"))
         else:
             st.info(t("daily_no_goals_match"))
+
+with tab_today_top5:
+    if not today_top5_df.empty:
+        st.caption(t("today_top5_desc"))
+        for p_name in sorted(today_top5_df['Name'].dropna().unique()):
+            with st.expander(t("records_player_group", name=p_name), expanded=False):
+                p_top5_df = today_top5_df[today_top5_df['Name'] == p_name].copy()
+                for m in sorted(p_top5_df['Mode'].dropna().unique()):
+                    with st.expander(t("records_mode_group", mode=m), expanded=False):
+                        pm_top5_df = p_top5_df[p_top5_df['Mode'] == m].copy().sort_values(by='Rank')
+                        pm_top5_df['Time'] = pm_top5_df['Time'].map('{:,.3f}s'.format)
+                        pm_top5_df['Timestamp'] = pd.to_datetime(
+                            pm_top5_df['Timestamp'], errors='coerce'
+                        ).dt.strftime('%H:%M:%S').fillna('-')
+                        display_df = pm_top5_df.rename(columns={
+                            'Rank': t("col_rank"),
+                            'Time': t("col_time"),
+                            'Timestamp': t("col_timestamp")
+                        })
+                        st.dataframe(
+                            display_df[[t("col_rank"), t("col_time"), t("col_timestamp")]],
+                            hide_index=True,
+                            width="stretch"
+                        )
+    else:
+        st.info(t("today_top5_no_records"))
 
 with tab_ao5:
     if not ao5_df.empty:

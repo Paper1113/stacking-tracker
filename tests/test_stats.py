@@ -7,6 +7,9 @@ import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from utils.stats import calculate_ao5, iter_records_grouped_by_name_and_mode
+from utils.stats import prepare_today_top5_data, get_personal_pb_rank
+from utils.data_manager import TIMEZONE
+from datetime import datetime, timedelta
 
 def test_calculate_ao5_less_than_5_records():
     """Test that Ao5 returns None if there are fewer than 5 records."""
@@ -52,3 +55,38 @@ def test_iter_records_grouped_by_name_and_mode_groups_in_sorted_order():
 def test_iter_records_grouped_by_name_and_mode_returns_empty_for_empty_input():
     df = pd.DataFrame(columns=["Name", "Mode", "Timestamp"])
     assert iter_records_grouped_by_name_and_mode(df) == []
+
+def test_prepare_today_top5_data_filters_and_ranks():
+    today = datetime.now(TIMEZONE)
+    today_str = today.strftime("%Y-%m-%d")
+    yesterday_str = (today - timedelta(days=1)).strftime("%Y-%m-%d")
+
+    df = pd.DataFrame([
+        {"Name": "Johnny", "Mode": "3-3-3", "Timestamp": f"{today_str} 10:00:00", "Time": 3.300, "IsScratch": False},
+        {"Name": "Johnny", "Mode": "3-3-3", "Timestamp": f"{today_str} 10:01:00", "Time": 3.100, "IsScratch": False},
+        {"Name": "Johnny", "Mode": "3-3-3", "Timestamp": f"{today_str} 10:02:00", "Time": 3.500, "IsScratch": False},
+        {"Name": "Johnny", "Mode": "3-3-3", "Timestamp": f"{today_str} 10:03:00", "Time": 3.000, "IsScratch": False},
+        {"Name": "Johnny", "Mode": "3-3-3", "Timestamp": f"{today_str} 10:04:00", "Time": 3.200, "IsScratch": False},
+        {"Name": "Johnny", "Mode": "3-3-3", "Timestamp": f"{today_str} 10:05:00", "Time": 2.900, "IsScratch": False},
+        {"Name": "Johnny", "Mode": "3-3-3", "Timestamp": f"{today_str} 10:06:00", "Time": 2.800, "IsScratch": True},
+        {"Name": "Johnny", "Mode": "3-3-3", "Timestamp": f"{yesterday_str} 10:00:00", "Time": 2.700, "IsScratch": False},
+    ])
+
+    top5_df = prepare_today_top5_data(df)
+
+    assert len(top5_df) == 5
+    assert top5_df["Rank"].tolist() == [1, 2, 3, 4, 5]
+    assert top5_df["Time"].tolist() == [2.9, 3.0, 3.1, 3.2, 3.3]
+
+def test_get_personal_pb_rank_returns_rank_when_candidate_is_top5():
+    valid_df = pd.DataFrame([
+        {"Name": "Johnny", "Mode": "3-6-3", "Time": 5.50, "Timestamp": "2026-03-30 10:00:00"},
+        {"Name": "Johnny", "Mode": "3-6-3", "Time": 5.60, "Timestamp": "2026-03-30 10:01:00"},
+        {"Name": "Johnny", "Mode": "3-6-3", "Time": 5.70, "Timestamp": "2026-03-30 10:02:00"},
+        {"Name": "Johnny", "Mode": "3-6-3", "Time": 5.80, "Timestamp": "2026-03-30 10:03:00"},
+        {"Name": "Johnny", "Mode": "3-6-3", "Time": 5.90, "Timestamp": "2026-03-30 10:04:00"},
+    ])
+
+    assert get_personal_pb_rank(valid_df, "Johnny", "3-6-3", 5.45, "2026-03-31 09:00:00") == 1
+    assert get_personal_pb_rank(valid_df, "Johnny", "3-6-3", 5.75, "2026-03-31 09:01:00") == 4
+    assert get_personal_pb_rank(valid_df, "Johnny", "3-6-3", 6.10, "2026-03-31 09:02:00") is None

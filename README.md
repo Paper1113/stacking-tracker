@@ -11,6 +11,11 @@ A lightweight practice logging app built for Sport Stacking enthusiasts and pare
 - Goals are configured per player/mode via a Google Sheets `Goals` worksheet
 - Each player's progress is displayed independently
 
+### ⚡ Today's Top 5 Fastest
+- Added between **Daily Practice Progress** and **Ao5** tabs
+- Grouped by **player → mode**, showing today's top 5 valid attempts (DNF excluded)
+- Each table shows rank, time, and timestamp for quick comparison
+
 ### ⚡ Fast Mode (Batch Sync)
 - Opt-in toggle specifically for 3-3-3 mode to support rapid, back-to-back attempts
 - Temporarily saves records locally to a pending pool without network delays
@@ -26,6 +31,7 @@ A lightweight practice logging app built for Sport Stacking enthusiasts and pare
 - Features an **interactive trend chart (Line Chart)** to visualize progress over time
 - Grouped by **player → mode**, with both levels collapsed by default for cleaner browsing
 - Shows a trend chart and Top 5 PB table for each player+mode section
+- When a new valid record enters that player's top 5 PB for a mode, a toast notification shows the new PB rank
 
 ### 🛡️ Reliability & Cache Management
 - **In-Memory State Sync (0-Read Optimization)**: Drastically reduces UI lag and API quotas by persisting the dataset in `st.session_state`. Record additions, updates, and deletions mutate the UI directly instantly without triggering full database reads.

@@ -29,6 +29,85 @@ def iter_records_grouped_by_name_and_mode(records_df: pd.DataFrame) -> List[Tupl
 
     return grouped_records
 
+def prepare_today_top5_data(df: pd.DataFrame) -> pd.DataFrame:
+    """Prepare today's top-5 fastest attempts per player+mode (DNF excluded)."""
+    if df.empty:
+        return pd.DataFrame()
+
+    work_df = df.copy()
+    if 'IsScratch' not in work_df.columns:
+        work_df['IsScratch'] = False
+
+    work_df['DateStr'] = pd.to_datetime(work_df['Timestamp'], errors='coerce').dt.strftime('%Y-%m-%d')
+    work_df['TimeNum'] = pd.to_numeric(work_df['Time'], errors='coerce')
+    work_df['TimestampDT'] = pd.to_datetime(work_df['Timestamp'], errors='coerce')
+
+    today_str = datetime.now(TIMEZONE).strftime("%Y-%m-%d")
+    today_valid_df = work_df[
+        (work_df['DateStr'] == today_str)
+        & (~work_df['IsScratch'].fillna(False).astype(bool))
+        & (work_df['TimeNum'].notnull())
+    ].copy()
+
+    if today_valid_df.empty:
+        return pd.DataFrame()
+
+    today_valid_df = today_valid_df.sort_values(
+        by=['Name', 'Mode', 'TimeNum', 'TimestampDT'],
+        ascending=[True, True, True, True],
+        na_position='last'
+    )
+    today_valid_df['Rank'] = today_valid_df.groupby(['Name', 'Mode']).cumcount() + 1
+
+    top5_df = today_valid_df[today_valid_df['Rank'] <= 5].copy()
+    top5_df = top5_df[['Name', 'Mode', 'Rank', 'TimeNum', 'Timestamp']].rename(columns={'TimeNum': 'Time'})
+    return top5_df
+
+def get_personal_pb_rank(
+    valid_df: pd.DataFrame,
+    name: str,
+    mode: str,
+    time_val: float,
+    timestamp_str: str
+) -> Optional[int]:
+    """Return PB rank (1-5) for a candidate attempt, or None if outside top 5."""
+    try:
+        candidate_time = float(time_val)
+    except (TypeError, ValueError):
+        return None
+
+    if valid_df.empty:
+        base_df = pd.DataFrame(columns=['TimeNum', 'Timestamp', '__candidate'])
+    else:
+        scoped_df = valid_df[(valid_df['Name'] == name) & (valid_df['Mode'] == mode)].copy()
+        if 'IsScratch' in scoped_df.columns:
+            scoped_df = scoped_df[~scoped_df['IsScratch'].fillna(False).astype(bool)]
+        scoped_df['TimeNum'] = pd.to_numeric(scoped_df['Time'], errors='coerce')
+        scoped_df = scoped_df[scoped_df['TimeNum'].notnull()].copy()
+        base_df = scoped_df[['TimeNum', 'Timestamp']].copy()
+        base_df['__candidate'] = False
+
+    candidate_df = pd.DataFrame([{
+        'TimeNum': candidate_time,
+        'Timestamp': timestamp_str,
+        '__candidate': True
+    }])
+
+    rank_df = pd.concat([base_df, candidate_df], ignore_index=True)
+    rank_df['TimestampDT'] = pd.to_datetime(rank_df['Timestamp'], errors='coerce')
+    rank_df = rank_df.sort_values(
+        by=['TimeNum', 'TimestampDT', '__candidate'],
+        ascending=[True, True, False],
+        na_position='last'
+    ).reset_index(drop=True)
+
+    top5_df = rank_df.head(5)
+    candidate_in_top5 = top5_df[top5_df['__candidate']].head(1)
+    if candidate_in_top5.empty:
+        return None
+
+    return int(candidate_in_top5.index[0] + 1)
+
 def prepare_ao5_data(valid_df_sorted: pd.DataFrame) -> pd.DataFrame:
     """Prepare Ao5 DataFrame."""
     ao5_results = []
