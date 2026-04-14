@@ -1,5 +1,6 @@
 import streamlit as st
 from streamlit_gsheets import GSheetsConnection
+from gspread import service_account_from_dict
 import pandas as pd
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -19,19 +20,29 @@ def get_connection():
 def _read_with_retry(conn, worksheet):
     return conn.read(worksheet=worksheet, ttl=DATA_TTL)
 
+def _get_gsheets_service_account_config():
+    """Read the configured gsheets service account config from Streamlit secrets."""
+    try:
+        raw_config = st.secrets.connections.gsheets
+    except Exception as exc:
+        raise RuntimeError("GSheets connection secrets are unavailable.") from exc
+
+    config = raw_config.to_dict() if hasattr(raw_config, "to_dict") else dict(raw_config)
+    spreadsheet_url = config.get("spreadsheet")
+    if not spreadsheet_url:
+        raise RuntimeError("GSheets spreadsheet URL is missing from secrets.")
+    if config.get("type") != "service_account":
+        raise RuntimeError("GSheets write operations require a service_account connection.")
+
+    credentials = {k: v for k, v in config.items() if k not in {"spreadsheet", "worksheet"}}
+    return spreadsheet_url, credentials
+
 def _get_data_worksheet(conn):
-    """Open and return the Data worksheet using the safest available client API."""
-    url = st.secrets.connections.gsheets.spreadsheet
-    client = getattr(conn, "client", None)
-    if client is None:
-        raise RuntimeError("GSheets connection client is unavailable.")
-
-    candidates = [client, getattr(client, "_client", None)]
-    for candidate in candidates:
-        if candidate is not None and hasattr(candidate, "open_by_url"):
-            return candidate.open_by_url(url).worksheet("Data")
-
-    raise RuntimeError("Unable to open Google Sheets client (no open_by_url method found).")
+    """Open the Data worksheet through gspread to avoid connector-private client attributes."""
+    _ = conn
+    spreadsheet_url, credentials = _get_gsheets_service_account_config()
+    client = service_account_from_dict(credentials)
+    return client.open_by_url(spreadsheet_url).worksheet("Data")
 
 def load_data(conn):
     """

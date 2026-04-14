@@ -2,7 +2,7 @@
 
 # ⏱️ Stacking Tracker
 
-A lightweight practice logging app built for Sport Stacking enthusiasts and parents. Powered by Streamlit and Google Sheets, it lets you record every improvement anytime, anywhere — right from your phone.
+A lightweight practice logging app built for Sport Stacking enthusiasts and parents. Powered by Streamlit with Google Sheets or Firestore as the backend, it lets you record every improvement anytime, anywhere — right from your phone.
 
 ## ✨ Features
 
@@ -14,7 +14,7 @@ A lightweight practice logging app built for Sport Stacking enthusiasts and pare
 ### ⚡ Today's Top 5 Fastest
 - Added between **Daily Practice Progress** and **Ao5** tabs
 - Grouped by **player → mode**, showing today's top 5 valid attempts (DNF excluded)
-- Each table shows rank, time, and timestamp for quick comparison
+- Each table shows rank, time, gap from the fastest attempt, and timestamp for quick comparison
 
 ### ⚡ Fast Mode (Batch Sync)
 - Opt-in toggle specifically for 3-3-3 mode to support rapid, back-to-back attempts
@@ -31,6 +31,7 @@ A lightweight practice logging app built for Sport Stacking enthusiasts and pare
 - Features an **interactive trend chart (Line Chart)** to visualize progress over time
 - Grouped by **player → mode**, with both levels collapsed by default for cleaner browsing
 - Shows a trend chart and Top 5 PB table for each player+mode section
+- PB Top 5 tables include a **Gap** column so you can compare each result against the #1 time at a glance
 - When a new valid record enters that player's top 5 PB for a mode, a toast notification shows the new PB rank
 
 ### 🛡️ Reliability & Cache Management
@@ -53,6 +54,7 @@ A lightweight practice logging app built for Sport Stacking enthusiasts and pare
 - Optimized number input for mobile numeric keypad
 - Input fields auto-clear after each save
 - Uses a custom Streamlit component for mobile-friendly decimal input (iOS Safari numeric keypad with decimal)
+- Includes an optional **backup native number input**, hidden by default and controlled from the sidebar
 - Displays the current player + mode selection clearly to reduce mis-taps
 
 ### 📜 Records Overview
@@ -74,7 +76,7 @@ A lightweight practice logging app built for Sport Stacking enthusiasts and pare
   - [Firestore](https://firebase.google.com/docs/firestore) (via `firebase-admin`) - *Opt-in*
 - **Resilience**: `tenacity` (API retries)
 - **Testing**: `pytest`, GitHub Actions
-- **Language**: Python 3.9+
+- **Language**: Python 3.13 (runtime/devcontainer target)
 
 ## 🚀 Quick Start
 
@@ -127,18 +129,19 @@ use_firestore = true
 
 ```bash
 # Create virtual environment
-python -m venv venv
-venv\Scripts\activate  # Windows
+python3 -m venv venv
+source venv/bin/activate  # macOS / Linux
+# venv\Scripts\activate   # Windows
 
 # Install dependencies
-pip install streamlit st-gsheets-connection pandas pytest tenacity
+pip install -r requirements.txt
 
 # Configure secrets
 mkdir .streamlit
 # Place your secrets.toml in the .streamlit/ directory
 
 # Run the app
-streamlit run streamlit_app.py
+python3 -m streamlit run streamlit_app.py
 ```
 
 ## 🔥 Firestore Setup (Pre-Migration)

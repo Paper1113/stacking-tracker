@@ -10,6 +10,7 @@ from google.cloud.firestore_v1.base_query import FieldFilter
 
 TIMEZONE = ZoneInfo("Asia/Hong_Kong")
 RECORD_ID_COL = "RecordId"
+FIRESTORE_BATCH_LIMIT = 499
 
 def get_connection():
     """Return the Firestore client. Name kept for compatibility."""
@@ -18,6 +19,7 @@ def get_connection():
 @st.cache_data(ttl=DATA_TTL, show_spinner=False)
 @retry(stop=stop_after_attempt(3), wait=wait_fixed(1))
 def load_data(_conn):
+    # Leading underscore prevents st.cache_data from hashing the connection object.
     conn = _conn
     """
     Read data from the 'records' Firestore collection.
@@ -84,6 +86,7 @@ def load_data(_conn):
 @st.cache_data(ttl=DATA_TTL, show_spinner=False)
 @retry(stop=stop_after_attempt(3), wait=wait_fixed(1))
 def load_players(_conn, default_names_from_data):
+    # Leading underscore prevents st.cache_data from hashing the connection object.
     conn = _conn
     """
     Read player names from the 'players' Firestore collection.
@@ -110,6 +113,7 @@ def load_players(_conn, default_names_from_data):
 @st.cache_data(ttl=DATA_TTL, show_spinner=False)
 @retry(stop=stop_after_attempt(3), wait=wait_fixed(1))
 def load_goals(_conn):
+    # Leading underscore prevents st.cache_data from hashing the connection object.
     conn = _conn
     """
     Read goal settings from the 'goals' Firestore collection.
@@ -161,23 +165,24 @@ def save_record_to_cloud(conn, timestamp_str, name, mode, time_val, is_scratch, 
 
 def sync_temp_logs_to_cloud(conn, temp_logs):
     """Sync an array of temp logs to Firestore using batch writes."""
-    batch = conn.batch()
-    
-    # Firestore batches have a 500 operation limit
-    for log in temp_logs:
-        rec_id = log.get(RECORD_ID_COL) or str(uuid.uuid4())
-        doc_ref = conn.collection("records").document(str(rec_id))
-        
-        batch.set(doc_ref, {
-            "Timestamp": log["Timestamp"],
-            "Name": log["Name"],
-            "Mode": log["Mode"],
-            "Time": log["Time"],
-            "IsScratch": bool(log.get("IsScratch", False)),
-            RECORD_ID_COL: str(rec_id)
-        })
-        
-    batch.commit()
+    for start in range(0, len(temp_logs), FIRESTORE_BATCH_LIMIT):
+        batch = conn.batch()
+        chunk = temp_logs[start:start + FIRESTORE_BATCH_LIMIT]
+
+        for log in chunk:
+            rec_id = log.get(RECORD_ID_COL) or str(uuid.uuid4())
+            doc_ref = conn.collection("records").document(str(rec_id))
+
+            batch.set(doc_ref, {
+                "Timestamp": log["Timestamp"],
+                "Name": log["Name"],
+                "Mode": log["Mode"],
+                "Time": log["Time"],
+                "IsScratch": bool(log.get("IsScratch", False)),
+                RECORD_ID_COL: str(rec_id)
+            })
+
+        batch.commit()
 
 def _find_document_id(conn, timestamp_str, name, mode, record_id=None):
     """Helper to find the Firestore document ID for a record."""

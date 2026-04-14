@@ -2,7 +2,7 @@
 
 # ⏱️ Stacking Tracker | 競技疊杯練習日誌
 
-專為競技疊杯（Sport Stacking）愛好者與家長設計的輕量化數據記錄 App。透過 Streamlit 與 Google Sheets 的結合，讓家長能隨時隨地用手機為選手記錄每一分進步。
+專為競技疊杯（Sport Stacking）愛好者與家長設計的輕量化數據記錄 App。透過 Streamlit 搭配 Google Sheets 或 Firestore 後端，讓家長能隨時隨地用手機為選手記錄每一分進步。
 
 ## ✨ 核心功能
 
@@ -14,7 +14,7 @@
 ### ⚡ 今日最快 Top 5
 - 新增於「今日練習進度」與「Ao5」之間的統計分頁
 - 按 **選手 → 項目** 分組，顯示今日最快 5 次有效成績（不含 DNF）
-- 每組顯示排名、成績與時間，方便即時比較
+- 每組顯示排名、成績、與最快成績的差距（Gap）及時間，方便即時比較
 
 ### ⚡ 快速記錄模式 (批次同步)
 - 專為極速連續接戰（3-3-3 項目）設計的選用模式
@@ -31,6 +31,7 @@
 - 內建 **互動式歷史趨勢圖 (Line Chart)**，將進步軌跡視覺化
 - 改為按 **選手 → 項目** 分組，兩層皆預設摺疊，瀏覽更清爽
 - 每個「選手+項目」區塊都會顯示趨勢圖與 Top 5 成績
+- PB Top 5 表格加入 **Gap** 欄位，可一眼比較每筆成績與第 1 名之間的時間差
 - 當新有效成績打入該選手該項目個人 PB 前 5 名，會彈出通知顯示刷新至第幾名
 
 ### 🛡️ 穩定性與快取管理
@@ -51,6 +52,7 @@
 ### 🧒 兒童友好介面
 - 超大按鈕設計（綠色成功 / 紅色失誤），4 歲小朋友都可以自己操作
 - 使用自訂 Streamlit 元件優化小數輸入（iOS Safari 會顯示含小數點的數字鍵盤）
+- 內建可選用的 **備用原生數字輸入框**，預設隱藏，可於側邊欄開關顯示
 - 儲存後自動清空輸入框
 - 清晰顯示目前選擇（選手 + 項目），減少誤按
 
@@ -73,7 +75,7 @@
   - [Firestore](https://firebase.google.com/docs/firestore) (透過 `firebase-admin`) - *可選用*
 - **Resilience**: `tenacity` (API 自動重試)
 - **Testing**: `pytest`, GitHub Actions
-- **Language**: Python 3.9+
+- **Language**: Python 3.13（runtime / devcontainer 目標版本）
 
 ## 🚀 快速部署指南
 
@@ -126,18 +128,19 @@ use_firestore = true
 
 ```bash
 # 建立虛擬環境
-python -m venv venv
-venv\Scripts\activate  # Windows
+python3 -m venv venv
+source venv/bin/activate  # macOS / Linux
+# venv\Scripts\activate   # Windows
 
 # 安裝依賴
-pip install streamlit st-gsheets-connection pandas pytest tenacity
+pip install -r requirements.txt
 
 # 設定 secrets
 mkdir .streamlit
 # 將 secrets.toml 放入 .streamlit/ 目錄
 
 # 啟動
-streamlit run streamlit_app.py
+python3 -m streamlit run streamlit_app.py
 ```
 
 ## 🔥 Firestore 設定（正式遷移前）

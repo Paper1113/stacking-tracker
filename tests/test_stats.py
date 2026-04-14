@@ -8,7 +8,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 
 from utils.stats import calculate_ao5, iter_records_grouped_by_name_and_mode
 from utils.stats import prepare_today_top5_data, get_personal_pb_rank
-from utils.stats import prepare_daily_progress_data
+from utils.stats import DAILY_PROGRESS_COLUMNS, prepare_daily_progress_data, prepare_daily_best_data, prepare_pb_data, prepare_top_pb_attempts
 from utils.data_manager import TIMEZONE
 from datetime import datetime, timedelta
 
@@ -35,7 +35,7 @@ def test_calculate_ao5_more_than_5_records():
     # Middle 3: 3.5, 3.6, 3.8
     # Average: (3.5 + 3.6 + 3.8) / 3 = 10.9 / 3 = 3.633...
     df = pd.DataFrame({"Time": [0.0, 3.5, 9.9, 3.6, 3.8, 1.0]})
-    assert pytest.approx(calculate_ao5(df), 0.001) == 3.633
+    assert calculate_ao5(df) == pytest.approx(3.633, abs=0.001)
 
 def test_iter_records_grouped_by_name_and_mode_groups_in_sorted_order():
     df = pd.DataFrame([
@@ -78,6 +78,7 @@ def test_prepare_today_top5_data_filters_and_ranks():
     assert len(top5_df) == 5
     assert top5_df["Rank"].tolist() == [1, 2, 3, 4, 5]
     assert top5_df["Time"].tolist() == [2.9, 3.0, 3.1, 3.2, 3.3]
+    assert top5_df["Gap"].tolist() == pytest.approx([0.0, 0.1, 0.2, 0.3, 0.4])
 
 def test_get_personal_pb_rank_returns_rank_when_candidate_is_top5():
     valid_df = pd.DataFrame([
@@ -127,3 +128,55 @@ def test_prepare_daily_progress_data_does_not_mutate_input_df():
     _ = prepare_daily_progress_data(df, goals_df)
 
     assert "DateStr" not in df.columns
+
+def test_prepare_daily_progress_data_uses_stable_internal_columns():
+    today = datetime.now(TIMEZONE).strftime("%Y-%m-%d")
+    df = pd.DataFrame([
+        {"Timestamp": f"{today} 10:00:00", "Name": "Johnny", "Mode": "3-3-3", "Time": 3.2, "IsScratch": False},
+        {"Timestamp": f"{today} 10:01:00", "Name": "Johnny", "Mode": "3-3-3", "Time": 3.7, "IsScratch": True},
+    ])
+    goals_df = pd.DataFrame([
+        {"Name": "Johnny", "Mode": "3-3-3", "TargetTime": 3.5},
+    ])
+
+    progress_df = prepare_daily_progress_data(df, goals_df)
+
+    assert list(progress_df.columns) == [
+        "Name",
+        DAILY_PROGRESS_COLUMNS["mode"],
+        DAILY_PROGRESS_COLUMNS["total"],
+        DAILY_PROGRESS_COLUMNS["success"],
+        DAILY_PROGRESS_COLUMNS["strict_rate"],
+        DAILY_PROGRESS_COLUMNS["lenient_rate"],
+        DAILY_PROGRESS_COLUMNS["target"],
+    ]
+    assert progress_df.iloc[0][DAILY_PROGRESS_COLUMNS["total"]] == "2 (DNF: 1)"
+    assert progress_df.iloc[0][DAILY_PROGRESS_COLUMNS["success"]] == "1/2"
+
+def test_prepare_pb_data_alias_matches_daily_best_helper():
+    valid_df = pd.DataFrame([
+        {"Name": "Johnny", "Mode": "3-3-3", "Time": 3.5, "Timestamp": "2026-03-30 10:00:00"},
+        {"Name": "Johnny", "Mode": "3-3-3", "Time": 3.2, "Timestamp": "2026-03-30 11:00:00"},
+        {"Name": "Johnny", "Mode": "3-3-3", "Time": 3.4, "Timestamp": "2026-03-31 10:00:00"},
+    ])
+
+    pd.testing.assert_frame_equal(
+        prepare_daily_best_data(valid_df),
+        prepare_pb_data(valid_df),
+    )
+
+def test_prepare_top_pb_attempts_includes_gap_from_best_time():
+    valid_df = pd.DataFrame([
+        {"Name": "Johnny", "Mode": "3-3-3", "Time": 3.400, "Timestamp": "2026-03-30 10:00:00"},
+        {"Name": "Johnny", "Mode": "3-3-3", "Time": 3.200, "Timestamp": "2026-03-30 11:00:00"},
+        {"Name": "Johnny", "Mode": "3-3-3", "Time": 3.250, "Timestamp": "2026-03-31 10:00:00"},
+        {"Name": "Johnny", "Mode": "3-3-3", "Time": 3.350, "Timestamp": "2026-03-31 10:30:00"},
+        {"Name": "Johnny", "Mode": "3-3-3", "Time": 3.500, "Timestamp": "2026-03-31 11:00:00"},
+        {"Name": "Johnny", "Mode": "3-3-3", "Time": 3.150, "Timestamp": "2026-03-31 11:30:00"},
+    ])
+
+    pb_attempts_df = prepare_top_pb_attempts(valid_df, "Johnny", "3-3-3")
+
+    assert pb_attempts_df["Rank"].tolist() == [1, 2, 3, 4, 5]
+    assert pb_attempts_df["Time"].tolist() == [3.15, 3.2, 3.25, 3.35, 3.4]
+    assert pb_attempts_df["Gap"].tolist() == pytest.approx([0.0, 0.05, 0.1, 0.2, 0.25])

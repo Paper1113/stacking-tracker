@@ -1,9 +1,17 @@
 import pandas as pd
 from datetime import datetime
 from utils.data_manager import TIMEZONE
-from utils.i18n import t
 
 from typing import List, Optional, Tuple
+
+DAILY_PROGRESS_COLUMNS = {
+    "mode": "Mode",
+    "total": "Total",
+    "success": "Success",
+    "strict_rate": "StrictRate",
+    "lenient_rate": "LenientRate",
+    "target": "Target",
+}
 
 def calculate_ao5(group: pd.DataFrame) -> Optional[float]:
     """Calculate Ao5: drop best and worst from last 5, average middle 3."""
@@ -60,7 +68,8 @@ def prepare_today_top5_data(df: pd.DataFrame) -> pd.DataFrame:
     today_valid_df['Rank'] = today_valid_df.groupby(['Name', 'Mode']).cumcount() + 1
 
     top5_df = today_valid_df[today_valid_df['Rank'] <= 5].copy()
-    top5_df = top5_df[['Name', 'Mode', 'Rank', 'TimeNum', 'Timestamp']].rename(columns={'TimeNum': 'Time'})
+    top5_df['Gap'] = top5_df.groupby(['Name', 'Mode'])['TimeNum'].transform(lambda s: s - s.iloc[0])
+    top5_df = top5_df[['Name', 'Mode', 'Rank', 'TimeNum', 'Gap', 'Timestamp']].rename(columns={'TimeNum': 'Time'})
     return top5_df
 
 def get_personal_pb_rank(
@@ -106,7 +115,8 @@ def get_personal_pb_rank(
     if candidate_in_top5.empty:
         return None
 
-    return int(candidate_in_top5.index[0] + 1)
+    candidate_index = candidate_in_top5.index[0]
+    return int(rank_df.index.get_loc(candidate_index) + 1)
 
 def prepare_ao5_data(valid_df_sorted: pd.DataFrame) -> pd.DataFrame:
     """Prepare Ao5 DataFrame."""
@@ -118,29 +128,56 @@ def prepare_ao5_data(valid_df_sorted: pd.DataFrame) -> pd.DataFrame:
                 ao5_results.append({'Name': a_name, 'Mode': a_mode, 'Ao5': ao5})
     return pd.DataFrame(ao5_results) if ao5_results else pd.DataFrame()
 
-def prepare_pb_data(valid_df: pd.DataFrame) -> pd.DataFrame:
-    """Prepare PB DataFrame."""
+def prepare_daily_best_data(valid_df: pd.DataFrame) -> pd.DataFrame:
+    """Return the fastest valid attempt per player, mode, and day for the PB trend chart."""
     if not valid_df.empty:
-        # Instead of single global PB, we return the fastest time *per day* for the trend chart
         valid_df_copy = valid_df.copy()
         valid_df_copy['Date'] = pd.to_datetime(valid_df_copy['Timestamp'], errors='coerce').dt.strftime('%Y-%m-%d')
-        
-        # Group by Name, Mode, and Date, then find the minimum time for each day
+
         idx = valid_df_copy.groupby(['Name', 'Mode', 'Date'])['Time'].idxmin()
         pb_df = valid_df_copy.loc[idx, ['Name', 'Mode', 'Time', 'Date']].copy()
-        
-        # Sort by Date chronologically so the line chart draws correctly left-to-right
+
         pb_df = pb_df.sort_values(by=['Name', 'Mode', 'Date']).reset_index(drop=True)
         return pb_df
     return pd.DataFrame()
 
+def prepare_pb_data(valid_df: pd.DataFrame) -> pd.DataFrame:
+    """Backward-compatible alias for callers still using the old trend-chart helper name."""
+    return prepare_daily_best_data(valid_df)
+
+def prepare_top_pb_attempts(valid_df: pd.DataFrame, name: str, mode: str, limit: int = 5) -> pd.DataFrame:
+    """Return the fastest attempts for a player+mode, including gap from the best time."""
+    if valid_df.empty:
+        return pd.DataFrame()
+
+    scoped_df = valid_df[(valid_df['Name'] == name) & (valid_df['Mode'] == mode)].copy()
+    if scoped_df.empty:
+        return pd.DataFrame()
+
+    scoped_df['TimeNum'] = pd.to_numeric(scoped_df['Time'], errors='coerce')
+    scoped_df = scoped_df[scoped_df['TimeNum'].notnull()].copy()
+    if scoped_df.empty:
+        return pd.DataFrame()
+
+    scoped_df['Date'] = pd.to_datetime(scoped_df['Timestamp'], errors='coerce').dt.strftime('%Y-%m-%d')
+    scoped_df['TimestampDT'] = pd.to_datetime(scoped_df['Timestamp'], errors='coerce')
+    scoped_df = scoped_df.sort_values(by=['TimeNum', 'TimestampDT'], na_position='last').head(limit).reset_index(drop=True)
+
+    best_time = scoped_df.iloc[0]['TimeNum']
+    scoped_df.insert(0, 'Rank', range(1, len(scoped_df) + 1))
+    scoped_df['Gap'] = scoped_df['TimeNum'] - best_time
+
+    return scoped_df[['Rank', 'TimeNum', 'Gap', 'Date']].rename(columns={'TimeNum': 'Time'})
+
 def prepare_daily_progress_data(df: pd.DataFrame, goals_df: pd.DataFrame) -> pd.DataFrame:
-    """Prepare Daily Progress DataFrame based on Goals."""
+    """Prepare today's progress rows using stable internal column keys."""
     if df.empty:
         return pd.DataFrame()
 
     today_str = datetime.now(TIMEZONE).strftime("%Y-%m-%d")
     df_copy = df.copy()
+    if 'IsScratch' not in df_copy.columns:
+        df_copy['IsScratch'] = False
     df_copy['DateStr'] = pd.to_datetime(df_copy['Timestamp'], errors='coerce').dt.strftime('%Y-%m-%d')
     today_df = df_copy[df_copy['DateStr'] == today_str].copy()
 
@@ -162,11 +199,11 @@ def prepare_daily_progress_data(df: pd.DataFrame, goals_df: pd.DataFrame) -> pd.
                 
                 progress_data.append({
                     "Name": p_name,
-                    t("col_mode"): p_mode,
-                    t("col_total"): f"{total_count} (DNF: {dnf_count})",
-                    t("col_success"): f"{success_count}/{total_count}",
-                    t("col_strict_rate"): f"{overall_rate:.1f}%",
-                    t("col_lenient_rate"): f"{valid_rate:.1f}%",
-                    t("col_target"): f"≤{target_time}s"
+                    DAILY_PROGRESS_COLUMNS["mode"]: p_mode,
+                    DAILY_PROGRESS_COLUMNS["total"]: f"{total_count} (DNF: {dnf_count})",
+                    DAILY_PROGRESS_COLUMNS["success"]: f"{success_count}/{total_count}",
+                    DAILY_PROGRESS_COLUMNS["strict_rate"]: f"{overall_rate:.1f}%",
+                    DAILY_PROGRESS_COLUMNS["lenient_rate"]: f"{valid_rate:.1f}%",
+                    DAILY_PROGRESS_COLUMNS["target"]: f"≤{target_time}s"
                 })
     return pd.DataFrame(progress_data) if progress_data else pd.DataFrame()

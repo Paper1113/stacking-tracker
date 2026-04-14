@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 import os
+import uuid
 import streamlit.components.v1 as components
 
 from utils.i18n import t, setup_language_selector, AVAILABLE_MODES
@@ -12,9 +13,11 @@ from utils.data_manager import (
     TIMEZONE
 )
 from utils.stats import (
+    DAILY_PROGRESS_COLUMNS,
     prepare_ao5_data,
-    prepare_pb_data,
+    prepare_daily_best_data,
     prepare_daily_progress_data,
+    prepare_top_pb_attempts,
     iter_records_grouped_by_name_and_mode,
     prepare_today_top5_data,
     get_personal_pb_rank,
@@ -26,7 +29,25 @@ _decimal_input_func = components.declare_component(
 )
 
 def decimal_input(key=None, value=None):
-    return _decimal_input_func(key=key, default=value, value=value)
+    component_value = _decimal_input_func(key=key, default=value, value=value)
+
+    fallback_value = 0.0
+    if st.session_state.get("show_backup_time_input", False):
+        with st.expander(t("input_time_fallback_label")):
+            st.caption(t("input_time_fallback_help"))
+            fallback_value = st.number_input(
+                t("input_time"),
+                min_value=0.0,
+                step=0.001,
+                format="%.3f",
+                value=float(value or 0.0),
+                key=f"{key}_native" if key else "time_decimal_input_native",
+                label_visibility="collapsed",
+            )
+
+    if component_value is not None:
+        return component_value
+    return fallback_value if fallback_value > 0 else None
 
 def queue_toast(message: str, icon: str = "ℹ️"):
     if 'pending_toasts' not in st.session_state:
@@ -161,6 +182,12 @@ if st.sidebar.button(t("btn_refresh"), use_container_width=True):
     if 'app_valid_df' in st.session_state:
         del st.session_state.app_valid_df
     st.rerun()
+st.sidebar.toggle(
+    t("toggle_backup_time_input"),
+    key="show_backup_time_input",
+    value=st.session_state.get("show_backup_time_input", False),
+    help=t("toggle_backup_time_input_help"),
+)
 
 
 # ============================================================
@@ -327,11 +354,11 @@ def input_section():
             if st.button(t("btn_sync"), type="primary", use_container_width=True):
                 try:
                     with st.spinner(t("syncing")):
-                        import uuid
                         new_rows = []
                         for log in st.session_state.temp_logs:
-                            log['RecordId'] = log.get('RecordId') or str(uuid.uuid4())
-                            new_rows.append(log)
+                            synced_log = dict(log)
+                            synced_log['RecordId'] = synced_log.get('RecordId') or str(uuid.uuid4())
+                            new_rows.append(synced_log)
                             
                         sync_temp_logs_to_cloud(conn, new_rows)
                         
@@ -360,7 +387,7 @@ input_section()
 valid_df_sorted = valid_df.sort_values(by='Timestamp') if not valid_df.empty else pd.DataFrame()
 
 ao5_df = prepare_ao5_data(valid_df_sorted)
-pb_df = prepare_pb_data(valid_df)
+pb_df = prepare_daily_best_data(valid_df)
 progress_df = prepare_daily_progress_data(df, goals_df)
 today_top5_df = prepare_today_top5_data(df)
 
@@ -374,10 +401,27 @@ tab_daily, tab_today_top5, tab_ao5, tab_pb = st.tabs([
 
 with tab_daily:
     if not progress_df.empty:
+        progress_display_columns = {
+            DAILY_PROGRESS_COLUMNS["mode"]: t("col_mode"),
+            DAILY_PROGRESS_COLUMNS["total"]: t("col_total"),
+            DAILY_PROGRESS_COLUMNS["success"]: t("col_success"),
+            DAILY_PROGRESS_COLUMNS["strict_rate"]: t("col_strict_rate"),
+            DAILY_PROGRESS_COLUMNS["lenient_rate"]: t("col_lenient_rate"),
+            DAILY_PROGRESS_COLUMNS["target"]: t("col_target"),
+        }
+        progress_display_order = [
+            progress_display_columns[DAILY_PROGRESS_COLUMNS["mode"]],
+            progress_display_columns[DAILY_PROGRESS_COLUMNS["total"]],
+            progress_display_columns[DAILY_PROGRESS_COLUMNS["success"]],
+            progress_display_columns[DAILY_PROGRESS_COLUMNS["strict_rate"]],
+            progress_display_columns[DAILY_PROGRESS_COLUMNS["lenient_rate"]],
+            progress_display_columns[DAILY_PROGRESS_COLUMNS["target"]],
+        ]
         for p_name in sorted(progress_df['Name'].unique()):
             with st.expander(t("daily_expander", name=p_name), expanded=True):
                 p_df = progress_df[progress_df['Name'] == p_name].reset_index(drop=True)
-                st.dataframe(p_df.drop(columns=['Name']), hide_index=True, width="stretch")
+                display_df = p_df.drop(columns=['Name']).rename(columns=progress_display_columns)
+                st.dataframe(display_df[progress_display_order], hide_index=True, width="stretch")
     else:
         if df.empty:
             st.info(t("daily_no_records"))
@@ -396,16 +440,20 @@ with tab_today_top5:
                     with st.expander(t("records_mode_group", mode=m), expanded=False):
                         pm_top5_df = p_top5_df[p_top5_df['Mode'] == m].copy().sort_values(by='Rank')
                         pm_top5_df['Time'] = pm_top5_df['Time'].map('{:,.3f}s'.format)
+                        pm_top5_df['Gap'] = pm_top5_df['Gap'].map(
+                            lambda x: "" if pd.isna(x) or x == 0 else f"+{x:.3f}s"
+                        )
                         pm_top5_df['Timestamp'] = pd.to_datetime(
                             pm_top5_df['Timestamp'], errors='coerce'
                         ).dt.strftime('%H:%M:%S').fillna('-')
                         display_df = pm_top5_df.rename(columns={
                             'Rank': t("col_rank"),
                             'Time': t("col_time"),
+                            'Gap': t("col_gap"),
                             'Timestamp': t("col_timestamp")
                         })
                         st.dataframe(
-                            display_df[[t("col_rank"), t("col_time"), t("col_timestamp")]],
+                            display_df[[t("col_rank"), t("col_time"), t("col_gap"), t("col_timestamp")]],
                             hide_index=True,
                             width="stretch"
                         )
@@ -437,17 +485,24 @@ with tab_pb:
                         st.line_chart(chart_data)
 
                         # Show Top 5 PB attempts for this player+mode.
-                        rank_df = valid_df[(valid_df['Name'] == p_name) & (valid_df['Mode'] == m)].copy()
-                        if not rank_df.empty:
-                            rank_df['Date'] = pd.to_datetime(rank_df['Timestamp'], errors='coerce').dt.strftime('%Y-%m-%d')
-                            p_df = rank_df.sort_values(by='Time').head(5).reset_index(drop=True)
-                            p_df.insert(0, "Rank", range(1, len(p_df) + 1))
-
-                            # Safely format Time column
-                            p_df['Time'] = p_df['Time'].apply(
-                                lambda x: f"{float(x):.3f}s" if pd.notnull(x) and str(x).replace('.', '', 1).isdigit() else str(x)
+                        p_df = prepare_top_pb_attempts(valid_df, p_name, m)
+                        if not p_df.empty:
+                            display_df = p_df.copy()
+                            display_df['Time'] = display_df['Time'].map('{:,.3f}s'.format)
+                            display_df['Gap'] = display_df['Gap'].map(
+                                lambda x: "" if pd.isna(x) or x == 0 else f"+{x:.3f}s"
                             )
-                            st.dataframe(p_df[['Rank', 'Time', 'Date']], hide_index=True, width="stretch")
+                            display_df = display_df.rename(columns={
+                                'Rank': t("col_rank"),
+                                'Time': t("col_time"),
+                                'Gap': t("col_gap"),
+                                'Date': t("col_date"),
+                            })
+                            st.dataframe(
+                                display_df[[t("col_rank"), t("col_time"), t("col_gap"), t("col_date")]],
+                                hide_index=True,
+                                width="stretch",
+                            )
                         else:
                             st.write(t("pb_no_records"))
     else:
