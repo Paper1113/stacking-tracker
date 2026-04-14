@@ -37,12 +37,24 @@ def _get_gsheets_service_account_config():
     credentials = {k: v for k, v in config.items() if k not in {"spreadsheet", "worksheet"}}
     return spreadsheet_url, credentials
 
-def _get_data_worksheet(conn):
-    """Open the Data worksheet through gspread to avoid connector-private client attributes."""
-    _ = conn
+def _get_data_worksheet_from_service_account_secrets():
+    """Fallback worksheet lookup using raw service-account secrets."""
     spreadsheet_url, credentials = _get_gsheets_service_account_config()
     client = service_account_from_dict(credentials)
     return client.open_by_url(spreadsheet_url).worksheet("Data")
+
+def _get_data_worksheet(conn):
+    """Open the Data worksheet for write operations.
+
+    Prefer the connection's authenticated client when it exposes worksheet
+    selection, so existing st-gsheets-connection credential flows keep
+    working. Fall back to raw service-account secrets only when needed.
+    """
+    client = getattr(conn, "client", None)
+    if client is not None and hasattr(client, "_select_worksheet"):
+        return client._select_worksheet(worksheet="Data")
+
+    return _get_data_worksheet_from_service_account_secrets()
 
 def load_data(conn):
     """
