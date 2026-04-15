@@ -59,6 +59,16 @@ def flush_queued_toasts():
     for toast in pending_toasts:
         st.toast(toast.get("message", ""), icon=toast.get("icon", "ℹ️"))
 
+def format_record(row):
+    ts = str(row.get('Timestamp', ''))
+    time_part = ts[11:19] if len(ts) >= 19 else ts
+    if pd.notnull(row.get('Time')):
+        time_text = f"{float(row['Time']):.3f}s"
+    else:
+        time_text = "-"
+    display_time = f"❌ {time_text} (DNF)" if row.get('IsScratch', False) else time_text
+    return f"{time_part} | {row['Name']} | {row['Mode']} | {display_time}"
+
 # Page configuration (responsive layout for mobile)
 st.set_page_config(page_title="Stacking Tracker", layout="centered")
 
@@ -546,16 +556,6 @@ if not df.empty:
                 st.info(t("records_edit_empty"))
             else:
                 pending_delete_key = "main_pending_delete_uid"
-                def format_record(row):
-                    ts = str(row.get('Timestamp', ''))
-                    time_part = ts[11:19] if len(ts) >= 19 else ts
-                    if pd.notnull(row.get('Time')):
-                        time_text = f"{float(row['Time']):.3f}s"
-                    else:
-                        time_text = "-"
-                    display_time = f"❌ {time_text} (DNF)" if row.get('IsScratch', False) else time_text
-                    return f"{time_part} | {row['Name']} | {row['Mode']} | {display_time}"
-
                 edit_options['UID'] = edit_options['RecordId'].astype(str)
                 uid_to_display = dict(zip(edit_options['UID'], edit_options.apply(format_record, axis=1)))
 
