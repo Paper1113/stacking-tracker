@@ -68,7 +68,7 @@ def prepare_today_top5_data(df: pd.DataFrame) -> pd.DataFrame:
     today_valid_df['Rank'] = today_valid_df.groupby(['Name', 'Mode']).cumcount() + 1
 
     top5_df = today_valid_df[today_valid_df['Rank'] <= 5].copy()
-    top5_df['Gap'] = top5_df.groupby(['Name', 'Mode'])['TimeNum'].transform(lambda s: s - s.iloc[0])
+    top5_df['Gap'] = top5_df.groupby(['Name', 'Mode'])['TimeNum'].transform(lambda s: s - s.min())
     top5_df = top5_df[['Name', 'Mode', 'Rank', 'TimeNum', 'Gap', 'Timestamp']].rename(columns={'TimeNum': 'Time'})
     return top5_df
 
@@ -115,8 +115,7 @@ def get_personal_pb_rank(
     if candidate_in_top5.empty:
         return None
 
-    candidate_index = candidate_in_top5.index[0]
-    return int(rank_df.index.get_loc(candidate_index) + 1)
+    return int(candidate_in_top5.index[0] + 1)
 
 def prepare_ao5_data(valid_df_sorted: pd.DataFrame) -> pd.DataFrame:
     """Prepare Ao5 DataFrame."""

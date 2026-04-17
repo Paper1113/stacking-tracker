@@ -51,6 +51,9 @@ def _get_data_worksheet(conn):
     working. Fall back to raw service-account secrets only when needed.
     """
     client = getattr(conn, "client", None)
+    # _select_worksheet is private in st-gsheets-connection but is the only
+    # way to open a named worksheet via the connection client.  The hasattr
+    # guard + fallback below protect against future API changes.
     if client is not None and hasattr(client, "_select_worksheet"):
         return client._select_worksheet(worksheet="Data")
 
