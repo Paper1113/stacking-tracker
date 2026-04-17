@@ -45,7 +45,7 @@ def decimal_input(key=None, value=None):
                 label_visibility="collapsed",
             )
 
-    if component_value is not None:
+    if component_value is not None and component_value > 0:
         return component_value
     return fallback_value if fallback_value > 0 else None
 

@@ -1,5 +1,6 @@
 import os
 import sys
+import uuid
 
 # Ensure the parent directory is in the Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -27,7 +28,6 @@ def main():
         # Get the unique RecordId, if it fails to exist we skip or create one
         record_id = row.get("RecordId")
         if not record_id or pd.isna(record_id):
-            import uuid
             record_id = str(uuid.uuid4())
             
         doc_ref = db.collection("records").document(str(record_id))

@@ -26,11 +26,6 @@ def load_data(_conn):
     Returns (df, valid_df).
     valid_df excludes scratched (DNF) records and rows with invalid times.
     """
-    # Streamlit caching based on Firestore might require different approach, 
-    # but we will just query Firestore and cache it if st.cache_data is managing this at higher level, 
-    # wait, the original didn't use st.cache_data here, it used gsheets ttl.
-    # To avoid constant reads, maybe wrap this in st.cache_data in production, but leaving it clean for now.
-    
     try:
         docs = conn.collection("records").stream()
         records = []
