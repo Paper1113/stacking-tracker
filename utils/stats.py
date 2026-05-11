@@ -38,7 +38,7 @@ def iter_records_grouped_by_name_and_mode(records_df: pd.DataFrame) -> List[Tupl
     return grouped_records
 
 def prepare_today_top5_data(df: pd.DataFrame) -> pd.DataFrame:
-    """Prepare today's top-5 fastest attempts per player+mode (DNF excluded)."""
+    """Prepare today's top-5 fastest attempts per player+mode (Scratch excluded)."""
     if df.empty:
         return pd.DataFrame()
 
@@ -199,7 +199,7 @@ def prepare_daily_progress_data(df: pd.DataFrame, goals_df: pd.DataFrame) -> pd.
                 progress_data.append({
                     "Name": p_name,
                     DAILY_PROGRESS_COLUMNS["mode"]: p_mode,
-                    DAILY_PROGRESS_COLUMNS["total"]: f"{total_count} (DNF: {dnf_count})",
+                    DAILY_PROGRESS_COLUMNS["total"]: f"{total_count} (Scratch: {dnf_count})",
                     DAILY_PROGRESS_COLUMNS["success"]: f"{success_count}/{total_count}",
                     DAILY_PROGRESS_COLUMNS["strict_rate"]: f"{overall_rate:.1f}%",
                     DAILY_PROGRESS_COLUMNS["lenient_rate"]: f"{valid_rate:.1f}%",

@@ -66,7 +66,7 @@ def format_record(row):
         time_text = f"{float(row['Time']):.3f}s"
     else:
         time_text = "-"
-    display_time = f"❌ {time_text} (DNF)" if row.get('IsScratch', False) else time_text
+    display_time = f"❌ {time_text} (Scratch)" if row.get('IsScratch', False) else time_text
     return f"{time_part} | {row['Name']} | {row['Mode']} | {display_time}"
 
 # Page configuration (responsive layout for mobile)
@@ -529,7 +529,7 @@ if not df.empty:
     recent_df = df.sort_values(by="Timestamp", ascending=False).head(500).copy()
     recent_df['Date'] = pd.to_datetime(recent_df['Timestamp'], errors='coerce').dt.strftime('%Y-%m-%d')
     recent_df['TimeDisplay'] = recent_df.apply(
-        lambda row: f"❌ {float(row['Time']):.3f}s (DNF)" if row.get('IsScratch', False) and pd.notnull(row['Time'])
+        lambda row: f"❌ {float(row['Time']):.3f}s (Scratch)" if row.get('IsScratch', False) and pd.notnull(row['Time'])
         else (f"{float(row['Time']):.3f}s" if pd.notnull(row['Time']) else "-"),
         axis=1
     )
@@ -688,7 +688,7 @@ if not df.empty:
                         )
                         daily_total_df['DnfRateDisplay'] = daily_total_df['DnfRate'].apply(lambda x: f"{x:.1%}")
                         daily_total_df['TotalDisplay'] = daily_total_df.apply(
-                            lambda row: f"{int(row['TotalCount'])} (DNF: {int(row['DnfCount'])})",
+                            lambda row: f"{int(row['TotalCount'])} (Scratch: {int(row['DnfCount'])})",
                             axis=1
                         )
                         fastest_record_df = (

@@ -150,7 +150,7 @@ def test_prepare_daily_progress_data_uses_stable_internal_columns():
         DAILY_PROGRESS_COLUMNS["lenient_rate"],
         DAILY_PROGRESS_COLUMNS["target"],
     ]
-    assert progress_df.iloc[0][DAILY_PROGRESS_COLUMNS["total"]] == "2 (DNF: 1)"
+    assert progress_df.iloc[0][DAILY_PROGRESS_COLUMNS["total"]] == "2 (Scratch: 1)"
     assert progress_df.iloc[0][DAILY_PROGRESS_COLUMNS["success"]] == "1/2"
 
 def test_prepare_pb_data_alias_matches_daily_best_helper():

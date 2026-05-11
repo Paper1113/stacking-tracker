@@ -13,7 +13,7 @@ A lightweight practice logging app built for Sport Stacking enthusiasts and pare
 
 ### ⚡ Today's Top 5 Fastest
 - Added between **Daily Practice Progress** and **Ao5** tabs
-- Grouped by **player → mode**, showing today's top 5 valid attempts (DNF excluded)
+- Grouped by **player → mode**, showing today's top 5 valid attempts (Scratch excluded)
 - Each table shows rank, time, gap from the fastest attempt, and timestamp for quick comparison
 
 ### ⚡ Fast Mode (Batch Sync)
@@ -44,13 +44,13 @@ A lightweight practice logging app built for Sport Stacking enthusiasts and pare
 - Protected by **GitHub Actions** workflows
 - Core logic (like Ao5 rules) is guarded by **pytest** unit tests that run automatically on every push or PR
 
-### ❌ Scratch / DNF Support
-- Mark dropped-cup or incomplete attempts as Scratch / DNF
-- DNF records are excluded from PB and Ao5 calculations but the time is preserved for reference
-- Goal completion rates offer both strict (includes DNF) and lenient (excludes DNF) calculations
+### ❌ Scratch Support
+- Mark dropped-cup or incomplete attempts as Scratch
+- Scratch records are excluded from PB and Ao5 calculations but the time is preserved for reference
+- Goal completion rates offer both strict (includes Scratch) and lenient (excludes Scratch) calculations
 
 ### 🧒 Child-Friendly UI
-- Extra-large buttons (green for Success, red for DNF) — designed so even a 4-year-old can self-record
+- Extra-large buttons (green for Success, red for Scratch) — designed so even a 4-year-old can self-record
 - Optimized number input for mobile numeric keypad
 - Input fields auto-clear after each save
 - Uses a custom Streamlit component for mobile-friendly decimal input (iOS Safari numeric keypad with decimal)
@@ -58,9 +58,9 @@ A lightweight practice logging app built for Sport Stacking enthusiasts and pare
 - Displays the current player + mode selection clearly to reduce mis-taps
 
 ### 📜 Records Overview
-- Today's records are grouped by **player → mode** and show detailed attempts (timestamp, player, time, DNF marker)
+- Today's records are grouped by **player → mode** and show detailed attempts (timestamp, player, time, Scratch marker)
 - Past records are grouped by **player → mode**, with both levels collapsed by default for cleaner browsing
-- Each past mode section shows a **daily summary**: Date, Total attempts (`Total (DNF: x)`), DNF rate, and Fastest completion
+- Each past mode section shows a **daily summary**: Date, Total attempts (`Total (Scratch: x)`), Scratch rate, and Fastest completion
 - **Edit & Delete**: Modify or remove today's records from the main records section
 - Delete actions include an explicit confirmation step to prevent accidental removal
 
