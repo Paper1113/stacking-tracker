@@ -24,7 +24,7 @@ def load_data(_conn):
     """
     Read data from the 'records' Firestore collection.
     Returns (df, valid_df).
-    valid_df excludes scratched (DNF) records and rows with invalid times.
+    valid_df excludes scratched (Scratch) records and rows with invalid times.
     """
     try:
         docs = conn.collection("records").stream()
@@ -69,7 +69,7 @@ def load_data(_conn):
             ]
             df[RECORD_ID_COL] = df[RECORD_ID_COL].astype(str)
         
-        # Build a filtered DataFrame excluding scratched (DNF) records
+        # Build a filtered DataFrame excluding scratched (Scratch) records
         valid_df = df[(df["Time"].notnull()) & (~df["IsScratch"])].copy()
     except Exception as e:
         st.error(t("err_read_fail", err=e))
