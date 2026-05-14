@@ -2,7 +2,7 @@
 
 # ⏱️ Stacking Tracker
 
-A lightweight practice logging app built for Sport Stacking enthusiasts and parents. Powered by Streamlit with Google Sheets or Firestore as the backend, it lets you record every improvement anytime, anywhere — right from your phone.
+A lightweight practice logging app built for Sport Stacking enthusiasts and parents. Powered by Streamlit with Google Sheets as the backend, it lets you record every improvement anytime, anywhere — right from your phone.
 
 ## ✨ Features
 
@@ -37,7 +37,7 @@ A lightweight practice logging app built for Sport Stacking enthusiasts and pare
 ### 🛡️ Reliability & Cache Management
 - **In-Memory State Sync (0-Read Optimization)**: Drastically reduces UI lag and API quotas by persisting the dataset in `st.session_state`. Record additions, updates, and deletions mutate the UI directly instantly without triggering full database reads.
 - **Manual Refresh**: A "Refresh Data" button gives users control to instantly sync with the latest cloud data, overriding the local session state.
-- **API Resilience**: Powered by `tenacity`, all Google Sheets / Firestore data fetches and uploads have automated retry logic (up to 3 attempts) to prevent crashes from temporary network timeouts.
+- **API Resilience**: Powered by `tenacity`, Google Sheets data fetches use automated retry logic (up to 3 attempts) to prevent crashes from temporary network timeouts.
 - **Stable Record Targeting**: Each record now carries a unique `RecordId`, so update/delete actions always target the intended row even when timestamp/name/mode are duplicated.
 
 ### 🔄 CI/CD & Automated Testing
@@ -71,9 +71,7 @@ A lightweight practice logging app built for Sport Stacking enthusiasts and pare
 
 ## 🛠️ Tech Stack
 - **Frontend/Backend**: [Streamlit](https://streamlit.io/) 1.55+
-- **Database (Dual Backend)**: 
-  - [Google Sheets](https://www.google.com/sheets/about/) (via `st-gsheets-connection`) - *Default*
-  - [Firestore](https://firebase.google.com/docs/firestore) (via `firebase-admin`) - *Opt-in*
+- **Database**: [Google Sheets](https://www.google.com/sheets/about/) via `st-gsheets-connection`
 - **Resilience**: `tenacity` (API retries)
 - **Testing**: `pytest`, GitHub Actions
 - **Language**: Python 3.13 (runtime/devcontainer target)
@@ -119,10 +117,6 @@ When deploying on Streamlit Cloud, add the following in **Advanced Settings** �
 ```toml
 [connections.gsheets]
 spreadsheet = "YOUR_GOOGLE_SHEET_URL"
-
-# Opt-in to use Firestore instead of Google Sheets
-# Requires [firestore] block configured as well
-use_firestore = true
 ```
 
 ### 3. Local Development
@@ -144,14 +138,6 @@ mkdir .streamlit
 python3 -m streamlit run streamlit_app.py
 ```
 
-## 🔥 Firestore Setup (Pre-Migration)
-
-Before migrating data from Google Sheets, complete Firestore setup first:
-
-1. Follow [docs/firestore_setup.md](docs/firestore_setup.md)
-2. Configure `.streamlit/secrets.toml` from `secrets.example.toml`
-3. Run `scripts/firestore_smoke_test.py` to validate connection
-
 ## 📁 Project Structure
 
 ```text
@@ -168,10 +154,8 @@ stacking-tracker/
 │   ├── test_stats.py   # Pytest coverage for Ao5 calculations
 │   └── test_record_id.py # RecordId row-matching safety tests
 ├── utils/              # Utility modules
-│   ├── data_manager.py           # Router module for database backend (GSheets vs Firestore)
+│   ├── data_manager.py           # Google Sheets data manager compatibility entrypoint
 │   ├── data_manager_gsheets.py   # Google Sheets connection & CRUD logic
-│   ├── data_manager_firestore.py # Firestore connection & CRUD logic
-│   ├── firestore_manager.py      # Firestore client initialization
 │   ├── i18n.py                   # Translations & language selection
 │   └── stats.py                  # Ao5, PB, and Progress calculations
 ├── .streamlit/
