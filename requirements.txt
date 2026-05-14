@@ -4,5 +4,4 @@ gspread
 pandas
 pytest==8.3.3
 tenacity
-firebase-admin
 tzdata
