@@ -37,8 +37,8 @@
 ### 🛡️ 穩定性與快取管理
 - **記憶體狀態同步 (0 讀取次數優化)**：使用 Streamlit `session_state` 將資料集暫存在記憶體中。新增、更新與刪除紀錄時會直接在 UI 上即時變更，不再需要重新從資料庫讀取所有資料，大幅減少 API 成本與 UI 卡頓。
 - **手動重新整理**：側邊欄新增「重新整理」按鈕，讓使用者能隨時清空本地狀態並強制抓取雲端最新資料。
-- **API 自動重試**：導入 `tenacity` 套件，Google Sheets 讀取遇到網路不穩時會自動在背景安全重試（最多 3 次），避免 App 崩潰。
-- **穩定記錄定位**：每筆資料會有唯一 `RecordId`，即使時間/選手/項目重複，修改與刪除仍可精準命中正確記錄。
+- **API 自動重試**：導入 `tenacity` 套件，Google Sheets 讀取與寫入遇到網路不穩時會自動在背景安全重試（最多 3 次），避免 App 崩潰。
+- **穩定記錄定位**：每筆資料會有唯一 `RecordId`，即使時間/選手/項目重複，修改與刪除仍可精準命中正確記錄。舊資料若缺少 `RecordId`，App 會自動回填。
 
 ### 🔄 CI/CD 與自動化測試
 - 專案受 **GitHub Actions** 自動化工作流程保護
@@ -69,7 +69,7 @@
 - 所有介面文字（標題、按鈕、訊息、欄位名）即時更新
 
 ## 🛠️ 技術棧
-- **Frontend/Backend**: [Streamlit](https://streamlit.io/) 1.55+
+- **Frontend/Backend**: [Streamlit](https://streamlit.io/) 1.55.0
 - **Database**: [Google Sheets](https://www.google.com/sheets/about/)（透過 `st-gsheets-connection`）
 - **Resilience**: `tenacity` (API 自動重試)
 - **Testing**: `pytest`, GitHub Actions
@@ -129,6 +129,9 @@ source venv/bin/activate  # macOS / Linux
 # 安裝依賴
 pip install -r requirements.txt
 
+# 如需完全可重現安裝，使用 lockfile
+pip install -r requirements.lock.txt
+
 # 設定 secrets
 mkdir .streamlit
 # 將 secrets.toml 放入 .streamlit/ 目錄
@@ -136,6 +139,23 @@ mkdir .streamlit
 # 啟動
 python3 -m streamlit run streamlit_app.py
 ```
+
+### 4. 依賴更新流程
+
+直接依賴已固定於 `requirements.txt`，完整解析後的依賴版本則記錄於 `requirements.lock.txt`。
+
+如需主動升級依賴：
+
+```bash
+# 先修改 requirements.txt，再重新產生 lockfile
+uv pip compile requirements.txt --python-version 3.13 -o requirements.lock.txt
+
+# 重新安裝並測試
+pip install -r requirements.lock.txt
+pytest tests/
+```
+
+Streamlit 已固定版本，因為手機版排版 CSS 針對 Streamlit 1.55.0 的 markup 驗證。升級 Streamlit 前，請先在桌面與手機寬度做 visual smoke test。
 
 ## 📁 專案結構
 
@@ -148,14 +168,23 @@ stacking-tracker/
 ├── config.json         # 專案常數設定 (例: 支援項目、資料暫存頻率)
 ├── i18n.json           # 外部化的多國語系翻譯檔
 ├── requirements.txt    # Python 依賴清單
+├── requirements.lock.txt # 完整解析後的依賴版本
 ├── .gitignore          # Git 忽略規則
+├── ui/                 # Streamlit UI 區塊與元件包裝
+│   ├── input_section.py
+│   ├── records_section.py
+│   ├── stats_section.py
+│   └── styles.py
 ├── tests/              # 單元測試資料夾
-│   ├── test_stats.py   # 針對 Ao5 與資料處理邏輯的 pytest
-│   └── test_record_id.py # RecordId 精準定位與相容性測試
+│   ├── test_data_manager_gsheets.py # Google Sheets adapter 測試
+│   ├── test_record_id.py            # RecordId 精準定位與相容性測試
+│   └── test_stats.py                # Ao5、PB 與進度測試
 ├── utils/              # 獨立功能模組
+│   ├── app_config.py            # 純設定、時區與翻譯載入
 │   ├── data_manager.py           # Google Sheets 資料管理相容入口
 │   ├── data_manager_gsheets.py   # Google Sheets 連線與存取邏輯
 │   ├── i18n.py                   # 語系載入與切換邏輯
+│   ├── records.py                # 純紀錄 schema 與 row matching helper
 │   └── stats.py                  # Ao5、PB 與每日進度計算邏輯
 ├── .streamlit/
 │   └── secrets.toml    # Google Sheets 連線設定 (不上傳)

@@ -20,6 +20,19 @@ class FakeConn:
         self.client = client
 
 
+class FakeWorksheet:
+    def __init__(self, headers):
+        self.headers = headers
+        self.updated_cells = []
+
+    def row_values(self, row_idx):
+        assert row_idx == 1
+        return self.headers
+
+    def update_cell(self, row_idx, col_idx, value):
+        self.updated_cells.append((row_idx, col_idx, value))
+
+
 def test_get_data_worksheet_prefers_connection_client(monkeypatch):
     client = FakeWritableClient()
     conn = FakeConn(client)
@@ -65,3 +78,43 @@ def test_get_data_worksheet_falls_back_when_no_select_worksheet(monkeypatch):
 
     worksheet = gsheets_manager._get_data_worksheet(conn)
     assert worksheet == "worksheet-from-service-account"
+
+
+def test_write_with_retry_retries_transient_failure(monkeypatch):
+    monkeypatch.setattr(gsheets_manager._write_with_retry.retry, "sleep", lambda _: None)
+    calls = {"count": 0}
+
+    def flaky_operation():
+        calls["count"] += 1
+        if calls["count"] == 1:
+            raise RuntimeError("temporary outage")
+        return "ok"
+
+    assert gsheets_manager._write_with_retry(flaky_operation) == "ok"
+    assert calls["count"] == 2
+
+
+def test_load_data_backfills_missing_record_ids(monkeypatch):
+    import pandas as pd
+
+    worksheet = FakeWorksheet(["Timestamp", "Name", "Mode", "Time", "IsScratch", "RecordId"])
+    raw_df = pd.DataFrame([
+        {
+            "Timestamp": "2026-03-20 10:10:10",
+            "Name": "Johnny",
+            "Mode": "'3-3-3",
+            "Time": "3.111",
+            "IsScratch": "FALSE",
+            "RecordId": "",
+        }
+    ])
+
+    monkeypatch.setattr(gsheets_manager, "_read_with_retry", lambda conn, worksheet_name: raw_df)
+    monkeypatch.setattr(gsheets_manager, "_get_data_worksheet", lambda conn: worksheet)
+    monkeypatch.setattr(gsheets_manager.uuid, "uuid4", lambda: "generated-record-id")
+
+    df, valid_df = gsheets_manager.load_data(FakeConn(client=None))
+
+    assert df["RecordId"].tolist() == ["generated-record-id"]
+    assert valid_df["RecordId"].tolist() == ["generated-record-id"]
+    assert worksheet.updated_cells == [(2, 6, "generated-record-id")]

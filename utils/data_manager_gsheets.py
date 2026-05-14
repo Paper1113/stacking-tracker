@@ -3,14 +3,15 @@ from streamlit_gsheets import GSheetsConnection
 from gspread import service_account_from_dict
 import pandas as pd
 from datetime import datetime
-from zoneinfo import ZoneInfo
 import uuid
 from tenacity import retry, stop_after_attempt, wait_fixed
-from utils.i18n import t, DATA_TTL, DEFAULT_PLAYERS
-
-TIMEZONE = ZoneInfo("Asia/Hong_Kong")
-RECORD_ID_COL = "RecordId"
-LEGACY_ROW_PREFIX = "legacy-row-"
+from utils.app_config import DATA_TTL, DEFAULT_PLAYERS, TIMEZONE
+from utils.i18n import t
+from utils.records import (
+    RECORD_ID_COL,
+    normalize_records_dataframe,
+    find_row_index,
+)
 
 def get_connection():
     """Establish and return the Google Sheets connection."""
@@ -19,6 +20,31 @@ def get_connection():
 @retry(stop=stop_after_attempt(3), wait=wait_fixed(1))
 def _read_with_retry(conn, worksheet):
     return conn.read(worksheet=worksheet, ttl=DATA_TTL)
+
+@retry(stop=stop_after_attempt(3), wait=wait_fixed(1))
+def _write_with_retry(operation, *args, **kwargs):
+    return operation(*args, **kwargs)
+
+def _missing_record_id_mask(df):
+    if df is None or df.empty or RECORD_ID_COL not in df.columns:
+        return pd.Series([True] * len(df), index=df.index) if df is not None else pd.Series(dtype=bool)
+
+    record_ids = df[RECORD_ID_COL]
+    return (
+        record_ids.isna()
+        | (record_ids.astype(str).str.strip() == "")
+        | (record_ids.astype(str).str.lower() == "nan")
+        | (record_ids.astype(str).str.lower() == "<na>")
+    )
+
+def _backfill_missing_record_ids(conn, row_ids):
+    if not row_ids:
+        return
+
+    ws = _get_data_worksheet(conn)
+    record_id_col_idx = _ensure_record_id_header(ws)
+    for row_idx, record_id in row_ids:
+        _write_with_retry(ws.update_cell, row_idx, record_id_col_idx, record_id)
 
 def _get_gsheets_service_account_config():
     """Read the configured gsheets service account config from Streamlit secrets."""
@@ -66,35 +92,20 @@ def load_data(conn):
     valid_df excludes scratched (Scratch) records and rows with invalid times.
     """
     try:
-        df = _read_with_retry(conn, "Data")
-
-        # Strip leading single quotes from Mode
-        if "Mode" in df.columns:
-            df["Mode"] = df["Mode"].astype(str).str.lstrip("'")
-            
-        # Ensure IsScratch column is boolean
-        if "IsScratch" in df.columns:
-            df["IsScratch"] = df["IsScratch"].astype(str).str.upper() == "TRUE"
-        else:
-            df["IsScratch"] = False
-
-        # Coerce Time column to numeric for calculations
-        df["Time"] = pd.to_numeric(df["Time"], errors='coerce')
-
-        # Ensure RecordId exists for robust update/delete targeting.
-        # For legacy rows without RecordId in the sheet, generate row-based fallback ID in memory.
-        if RECORD_ID_COL not in df.columns:
-            df[RECORD_ID_COL] = [f"{LEGACY_ROW_PREFIX}{i + 2}" for i in range(len(df))]
-        else:
-            missing_mask = (
-                df[RECORD_ID_COL].isna()
-                | (df[RECORD_ID_COL].astype(str).str.strip() == "")
-                | (df[RECORD_ID_COL].astype(str).str.lower() == "nan")
-            )
-            df.loc[missing_mask, RECORD_ID_COL] = [
-                f"{LEGACY_ROW_PREFIX}{i + 2}" for i in df.index[missing_mask]
-            ]
-            df[RECORD_ID_COL] = df[RECORD_ID_COL].astype(str)
+        raw_df = _read_with_retry(conn, "Data")
+        missing_record_id_mask = _missing_record_id_mask(raw_df)
+        df = normalize_records_dataframe(
+            raw_df,
+            missing_record_id_factory=lambda _idx: str(uuid.uuid4()),
+        )
+        backfill_rows = [
+            (int(idx) + 2, df.loc[idx, RECORD_ID_COL])
+            for idx in df.index[missing_record_id_mask]
+        ]
+        try:
+            _backfill_missing_record_ids(conn, backfill_rows)
+        except Exception as backfill_err:
+            st.warning(f"RecordId backfill skipped: {backfill_err}")
         
         # Build a filtered DataFrame excluding scratched (Scratch) records
         valid_df = df[(df["Time"].notnull()) & (~df["IsScratch"])].copy()
@@ -154,12 +165,12 @@ def get_current_timestamp():
 
 def _ensure_record_id_header(ws):
     """Ensure the Data worksheet has a RecordId header column."""
-    headers = ws.row_values(1)
+    headers = _write_with_retry(ws.row_values, 1)
     if RECORD_ID_COL in headers:
         return headers.index(RECORD_ID_COL) + 1
 
     record_id_col_idx = max(len(headers) + 1, 6)
-    ws.update_cell(1, record_id_col_idx, RECORD_ID_COL)
+    _write_with_retry(ws.update_cell, 1, record_id_col_idx, RECORD_ID_COL)
     return record_id_col_idx
 
 def save_record_to_cloud(conn, timestamp_str, name, mode, time_val, is_scratch, record_id=None):
@@ -172,7 +183,7 @@ def save_record_to_cloud(conn, timestamp_str, name, mode, time_val, is_scratch, 
     # Prefix safe_mode to prevent Google Sheets from auto-formatting '3-3-3' as dates
     safe_mode = f"'{mode}" if mode in ["3-3-3", "3-6-3"] else mode
     row_data = [timestamp_str, name, safe_mode, time_val, is_scratch, record_id]
-    ws.append_row(row_data, table_range="A1", value_input_option="USER_ENTERED")
+    _write_with_retry(ws.append_row, row_data, table_range="A1", value_input_option="USER_ENTERED")
     return record_id
 
 def sync_temp_logs_to_cloud(conn, temp_logs):
@@ -191,50 +202,12 @@ def sync_temp_logs_to_cloud(conn, temp_logs):
         ]
         for log in temp_logs
     ]
-    ws.append_rows(rows_data, table_range="A1", value_input_option="USER_ENTERED")
+    _write_with_retry(ws.append_rows, rows_data, table_range="A1", value_input_option="USER_ENTERED")
 
 def _find_row_index(ws, timestamp_str=None, name=None, mode=None, record_id=None):
     """Helper to find the 1-based row index for a specific record."""
-    all_values = ws.get_all_values()
-    if not all_values:
-        return None
-
-    headers = all_values[0]
-    record_id_col_idx = headers.index(RECORD_ID_COL) if RECORD_ID_COL in headers else None
-
-    if record_id:
-        if record_id.startswith(LEGACY_ROW_PREFIX):
-            try:
-                legacy_row_idx = int(record_id.replace(LEGACY_ROW_PREFIX, "", 1))
-                if 2 <= legacy_row_idx <= len(all_values):
-                    if timestamp_str is None and name is None and mode is None:
-                        return legacy_row_idx
-                    row = all_values[legacy_row_idx - 1]
-                    if len(row) >= 3:
-                        r_ts, r_name, r_mode = row[0], row[1], row[2].lstrip("'")
-                        if r_ts == timestamp_str and r_name == name and r_mode == mode:
-                            return legacy_row_idx
-            except ValueError:
-                pass
-
-        if record_id_col_idx is not None:
-            for i, row in enumerate(all_values):
-                if i == 0:
-                    continue
-                if len(row) > record_id_col_idx and row[record_id_col_idx] == record_id:
-                    return i + 1
-
-    # Headers are usually at row 1 (index 0 in list). Find the match.
-    # We strip single quotes from Mode just in case.
-    for i, row in enumerate(all_values):
-        if i == 0:
-            continue # skip header
-        if len(row) >= 3:
-            r_ts, r_name, r_mode = row[0], row[1], row[2].lstrip("'")
-            if r_ts == timestamp_str and r_name == name and r_mode == mode:
-                # GSheets rows are 1-indexed
-                return i + 1
-    return None
+    all_values = _write_with_retry(ws.get_all_values)
+    return find_row_index(all_values, timestamp_str, name, mode, record_id)
 
 def update_record_in_cloud(conn, timestamp_str, name, mode, new_time_val, is_scratch, record_id=None):
     """Update a specific record in Google Sheets."""
@@ -245,8 +218,8 @@ def update_record_in_cloud(conn, timestamp_str, name, mode, new_time_val, is_scr
         raise ValueError(t("msg_record_not_found"))
         
     # Update time (col 4 / D) and IsScratch (col 5 / E)
-    ws.update_cell(row_idx, 4, new_time_val)
-    ws.update_cell(row_idx, 5, is_scratch)
+    _write_with_retry(ws.update_cell, row_idx, 4, new_time_val)
+    _write_with_retry(ws.update_cell, row_idx, 5, is_scratch)
 
 def delete_record_from_cloud(conn, timestamp_str, name, mode, record_id=None):
     """Delete a specific record from Google Sheets."""
@@ -256,4 +229,4 @@ def delete_record_from_cloud(conn, timestamp_str, name, mode, record_id=None):
     if row_idx is None:
         raise ValueError(t("msg_record_not_found"))
         
-    ws.delete_rows(row_idx)
+    _write_with_retry(ws.delete_rows, row_idx)
