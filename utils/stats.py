@@ -23,16 +23,19 @@ def calculate_ao5(group: pd.DataFrame) -> Optional[float]:
 
 def iter_records_grouped_by_name_and_mode(records_df: pd.DataFrame) -> List[Tuple[str, List[Tuple[str, pd.DataFrame]]]]:
     """Return records grouped in sorted player -> mode order for UI rendering."""
-    grouped_records = []
     if records_df.empty:
-        return grouped_records
+        return []
 
-    for name in sorted(records_df['Name'].dropna().unique()):
-        player_records = records_df[records_df['Name'] == name].copy().reset_index(drop=True)
-        mode_groups = []
-        for mode in sorted(player_records['Mode'].dropna().unique()):
-            mode_records = player_records[player_records['Mode'] == mode].copy().reset_index(drop=True)
-            mode_groups.append((mode, mode_records))
+    grouped_records: List[Tuple[str, List[Tuple[str, pd.DataFrame]]]] = []
+    grouped_by_name = records_df.groupby('Name', sort=True, dropna=True)
+
+    for name, player_records in grouped_by_name:
+        mode_groups: List[Tuple[str, pd.DataFrame]] = []
+        grouped_by_mode = player_records.groupby('Mode', sort=True, dropna=True)
+
+        for mode, mode_records in grouped_by_mode:
+            mode_groups.append((mode, mode_records.copy().reset_index(drop=True)))
+
         grouped_records.append((name, mode_groups))
 
     return grouped_records
