@@ -141,7 +141,7 @@ def test_write_with_retry_reraises_final_error(monkeypatch):
     assert calls["count"] == 3
 
 
-def test_load_data_backfills_missing_record_ids(monkeypatch):
+def test_load_data_uses_legacy_record_ids_without_sheet_backfill(monkeypatch):
     import pandas as pd
 
     gsheets_manager._RECORD_ID_COL_CACHE.clear()
@@ -159,26 +159,21 @@ def test_load_data_backfills_missing_record_ids(monkeypatch):
 
     monkeypatch.setattr(gsheets_manager, "_read_with_retry", lambda conn, worksheet_name: raw_df)
     monkeypatch.setattr(gsheets_manager, "_get_data_worksheet", lambda conn: worksheet)
-    monkeypatch.setattr(gsheets_manager.uuid, "uuid4", lambda: "generated-record-id")
 
     df, valid_df = gsheets_manager.load_data(FakeConn(client=None))
 
-    assert df["RecordId"].tolist() == ["generated-record-id"]
-    assert valid_df["RecordId"].tolist() == ["generated-record-id"]
-    assert worksheet.batch_updates == [(
-        [{"range": "F2", "values": [["generated-record-id"]]}],
-        {"value_input_option": "RAW"},
-    )]
+    assert df["RecordId"].tolist() == ["legacy-row-2"]
+    assert valid_df["RecordId"].tolist() == ["legacy-row-2"]
+    assert worksheet.row_values_calls == 0
+    assert worksheet.updated_cells == []
+    assert worksheet.batch_updates == []
 
 
-def test_load_data_keeps_legacy_record_ids_when_backfill_fails(monkeypatch):
+def test_load_data_keeps_legacy_record_ids_for_duplicate_missing_ids(monkeypatch):
     import pandas as pd
 
     gsheets_manager._RECORD_ID_COL_CACHE.clear()
-    worksheet = FakeWorksheet(
-        ["Timestamp", "Name", "Mode", "Time", "IsScratch", "RecordId"],
-        fail_updates=True,
-    )
+    worksheet = FakeWorksheet(["Timestamp", "Name", "Mode", "Time", "IsScratch", "RecordId"])
     raw_df = pd.DataFrame([
         {
             "Timestamp": "2026-03-20 10:10:10",
@@ -197,75 +192,17 @@ def test_load_data_keeps_legacy_record_ids_when_backfill_fails(monkeypatch):
             "RecordId": "",
         },
     ])
-    warnings = []
 
     monkeypatch.setattr(gsheets_manager, "_read_with_retry", lambda conn, worksheet_name: raw_df)
     monkeypatch.setattr(gsheets_manager, "_get_data_worksheet", lambda conn: worksheet)
-    monkeypatch.setattr(gsheets_manager.uuid, "uuid4", lambda: "generated-record-id")
-    monkeypatch.setattr(gsheets_manager.st, "warning", lambda message: warnings.append(message))
-    monkeypatch.setattr(gsheets_manager._write_with_retry.retry, "sleep", lambda _: None)
 
     df, valid_df = gsheets_manager.load_data(FakeConn(client=None))
 
     assert df["RecordId"].tolist() == ["legacy-row-2", "legacy-row-3"]
     assert valid_df["RecordId"].tolist() == ["legacy-row-2", "legacy-row-3"]
-    assert warnings == ["RecordId backfill skipped: write failed"]
-
-
-def test_load_data_retains_successful_record_ids_when_backfill_partially_fails(monkeypatch):
-    import pandas as pd
-
-    gsheets_manager._RECORD_ID_COL_CACHE.clear()
-    worksheet = FakeWorksheet(
-        ["Timestamp", "Name", "Mode", "Time", "IsScratch", "RecordId"],
-        fail_rows={3},
-    )
-    raw_df = pd.DataFrame([
-        {
-            "Timestamp": "2026-03-20 10:10:10",
-            "Name": "Johnny",
-            "Mode": "'3-3-3",
-            "Time": "3.111",
-            "IsScratch": "FALSE",
-            "RecordId": "",
-        },
-        {
-            "Timestamp": "2026-03-20 10:10:10",
-            "Name": "Johnny",
-            "Mode": "'3-3-3",
-            "Time": "3.222",
-            "IsScratch": "FALSE",
-            "RecordId": "",
-        },
-        {
-            "Timestamp": "2026-03-20 10:10:10",
-            "Name": "Johnny",
-            "Mode": "'3-3-3",
-            "Time": "3.333",
-            "IsScratch": "FALSE",
-            "RecordId": "",
-        },
-    ])
-    generated_ids = iter(["generated-1", "generated-2", "generated-3"])
-    warnings = []
-
-    monkeypatch.setattr(gsheets_manager, "_read_with_retry", lambda conn, worksheet_name: raw_df)
-    monkeypatch.setattr(gsheets_manager, "_get_data_worksheet", lambda conn: worksheet)
-    monkeypatch.setattr(gsheets_manager.uuid, "uuid4", lambda: next(generated_ids))
-    monkeypatch.setattr(gsheets_manager.st, "warning", lambda message: warnings.append(message))
-    monkeypatch.setattr(gsheets_manager._write_with_retry.retry, "sleep", lambda _: None)
-    monkeypatch.setattr(gsheets_manager, "BACKFILL_BATCH_SIZE", 1)
-
-    df, valid_df = gsheets_manager.load_data(FakeConn(client=None))
-
-    expected_ids = ["generated-1", "legacy-row-3", "legacy-row-4"]
-    assert df["RecordId"].tolist() == expected_ids
-    assert valid_df["RecordId"].tolist() == expected_ids
-    assert worksheet.batch_updates == [(
-        [{"range": "F2", "values": [["generated-1"]]}],
-        {"value_input_option": "RAW"},
-    )]
-    assert warnings == ["RecordId backfill skipped: write failed"]
+    assert worksheet.row_values_calls == 0
+    assert worksheet.updated_cells == []
+    assert worksheet.batch_updates == []
 
 
 def test_ensure_record_id_header_caches_column_lookup():
