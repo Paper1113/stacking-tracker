@@ -3,6 +3,8 @@ import sys
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
+import pytest
+
 import utils.data_manager_gsheets as gsheets_manager
 
 
@@ -96,6 +98,20 @@ def test_write_with_retry_retries_transient_failure(monkeypatch):
 
     assert gsheets_manager._write_with_retry(flaky_operation) == "ok"
     assert calls["count"] == 2
+
+
+def test_write_with_retry_reraises_final_error(monkeypatch):
+    monkeypatch.setattr(gsheets_manager._write_with_retry.retry, "sleep", lambda _: None)
+    calls = {"count": 0}
+
+    def failing_operation():
+        calls["count"] += 1
+        raise RuntimeError("persistent outage")
+
+    with pytest.raises(RuntimeError, match="persistent outage"):
+        gsheets_manager._write_with_retry(failing_operation)
+
+    assert calls["count"] == 3
 
 
 def test_load_data_backfills_missing_record_ids(monkeypatch):

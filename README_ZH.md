@@ -116,7 +116,19 @@
 ```toml
 [connections.gsheets]
 spreadsheet = "你的GoogleSheet網址"
+type = "service_account"
+project_id = "你的Google Cloud project_id"
+private_key_id = "你的 private_key_id"
+private_key = "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
+client_email = "你的-service-account@你的-project.iam.gserviceaccount.com"
+client_id = "你的 client_id"
+auth_uri = "https://accounts.google.com/o/oauth2/auth"
+token_uri = "https://oauth2.googleapis.com/token"
+auth_provider_x509_cert_url = "https://www.googleapis.com/oauth2/v1/certs"
+client_x509_cert_url = "https://www.googleapis.com/robot/v1/metadata/x509/..."
 ```
+
+同時要在 Google Sheet 右上角 **Share**，將 `client_email` 加入為 **Editor**。Firestore 已不再使用；如 Secrets 仍有舊的 `[firestore]` 區塊，可以刪除。
 
 ### 3. 本地開發
 

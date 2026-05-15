@@ -4,7 +4,7 @@ import pandas as pd
 import streamlit as st
 
 from utils.app_config import TIMEZONE
-from utils.data_manager import delete_record_from_cloud, update_record_in_cloud
+from utils.data_manager import delete_record_from_cloud, format_cloud_error, update_record_in_cloud
 from utils.i18n import t
 from utils.stats import iter_records_grouped_by_name_and_mode
 
@@ -143,7 +143,7 @@ def _update_selected_record(conn, orig_ts, orig_name, orig_mode, orig_record_id,
         st.success(t("msg_update_success"))
         st.rerun()
     except Exception as e:
-        st.error(f"Error: {e}")
+        st.error(f"Error: {format_cloud_error(e)}")
 
 
 def _render_delete_confirmation(conn, pending_delete_key, selected_uid, uid_safe, orig_ts, orig_name, orig_mode, orig_record_id):
@@ -188,7 +188,7 @@ def _delete_selected_record(conn, pending_delete_key, orig_ts, orig_name, orig_m
         st.success(t("msg_delete_success"))
         st.rerun()
     except Exception as e:
-        st.error(f"Error: {e}")
+        st.error(f"Error: {format_cloud_error(e)}")
 
 
 def _render_past_records(past_records):

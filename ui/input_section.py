@@ -7,6 +7,7 @@ from ui.decimal_input import decimal_input
 from ui.toasts import queue_toast
 from utils.app_config import AVAILABLE_MODES
 from utils.data_manager import (
+    format_cloud_error,
     get_current_timestamp,
     save_record_to_cloud,
     sync_temp_logs_to_cloud,
@@ -169,7 +170,7 @@ def render_input_section(conn, names):
                     st.session_state.time_input_key += 1
                     st.rerun()
                 except Exception as e:
-                    st.error(t("err_save_fail", err=e))
+                    st.error(t("err_save_fail", err=format_cloud_error(e)))
 
     # --- Temp Pool Display & Sync ---
     if st.session_state.temp_logs:
@@ -213,7 +214,7 @@ def render_input_section(conn, names):
                         st.success(t("msg_synced"))
                         st.rerun()
                 except Exception as e:
-                    st.error(t("sync_fail", err=e))
+                    st.error(t("sync_fail", err=format_cloud_error(e)))
 
         with clear_col:
             if st.button(t("btn_clear"), use_container_width=True):
