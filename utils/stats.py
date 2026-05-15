@@ -1,6 +1,6 @@
 import pandas as pd
 from datetime import datetime
-from utils.data_manager import TIMEZONE
+from utils.app_config import TIMEZONE
 
 from typing import List, Optional, Tuple
 

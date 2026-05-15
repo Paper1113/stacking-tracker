@@ -1,21 +1,5 @@
 import streamlit as st
-import json
-import os
-
-# Get absolute path to the project root
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
-# Load configuration
-with open(os.path.join(PROJECT_ROOT, "config.json"), "r", encoding="utf-8") as f:
-    config = json.load(f)
-
-AVAILABLE_MODES = config.get("AVAILABLE_MODES", [])
-DEFAULT_PLAYERS = config.get("DEFAULT_PLAYERS", [])
-DATA_TTL = config.get("DATA_TTL", 300)
-
-# Load translations
-with open(os.path.join(PROJECT_ROOT, "i18n.json"), "r", encoding="utf-8") as f:
-    TRANSLATIONS = json.load(f)
+from utils.app_config import TRANSLATIONS
 
 def t(key, **kwargs):
     """Get translated string for the current language."""

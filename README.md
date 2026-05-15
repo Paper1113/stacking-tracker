@@ -37,8 +37,8 @@ A lightweight practice logging app built for Sport Stacking enthusiasts and pare
 ### 🛡️ Reliability & Cache Management
 - **In-Memory State Sync (0-Read Optimization)**: Drastically reduces UI lag and API quotas by persisting the dataset in `st.session_state`. Record additions, updates, and deletions mutate the UI directly instantly without triggering full database reads.
 - **Manual Refresh**: A "Refresh Data" button gives users control to instantly sync with the latest cloud data, overriding the local session state.
-- **API Resilience**: Powered by `tenacity`, Google Sheets data fetches use automated retry logic (up to 3 attempts) to prevent crashes from temporary network timeouts.
-- **Stable Record Targeting**: Each record now carries a unique `RecordId`, so update/delete actions always target the intended row even when timestamp/name/mode are duplicated.
+- **API Resilience**: Powered by `tenacity`, Google Sheets reads and writes use automated retry logic (up to 3 attempts) to prevent crashes from temporary network timeouts.
+- **Stable Record Targeting**: Each record now carries a unique `RecordId`, so update/delete actions always target the intended row even when timestamp/name/mode are duplicated. Legacy rows without a `RecordId` are backfilled automatically.
 
 ### 🔄 CI/CD & Automated Testing
 - Protected by **GitHub Actions** workflows
@@ -70,7 +70,7 @@ A lightweight practice logging app built for Sport Stacking enthusiasts and pare
 - All UI text (headers, buttons, messages, column labels) updates instantly
 
 ## 🛠️ Tech Stack
-- **Frontend/Backend**: [Streamlit](https://streamlit.io/) 1.55+
+- **Frontend/Backend**: [Streamlit](https://streamlit.io/) 1.55.0
 - **Database**: [Google Sheets](https://www.google.com/sheets/about/) via `st-gsheets-connection`
 - **Resilience**: `tenacity` (API retries)
 - **Testing**: `pytest`, GitHub Actions
@@ -130,6 +130,9 @@ source venv/bin/activate  # macOS / Linux
 # Install dependencies
 pip install -r requirements.txt
 
+# For reproducible installs, use the lockfile instead
+pip install -r requirements.lock.txt
+
 # Configure secrets
 mkdir .streamlit
 # Place your secrets.toml in the .streamlit/ directory
@@ -137,6 +140,23 @@ mkdir .streamlit
 # Run the app
 python3 -m streamlit run streamlit_app.py
 ```
+
+### 4. Dependency Updates
+
+Direct dependencies are pinned in `requirements.txt`. The full resolved dependency set is captured in `requirements.lock.txt`.
+
+When intentionally upgrading dependencies:
+
+```bash
+# Edit requirements.txt first, then regenerate the lockfile
+uv pip compile requirements.txt --python-version 3.13 -o requirements.lock.txt
+
+# Reinstall and run tests
+pip install -r requirements.lock.txt
+pytest tests/
+```
+
+Streamlit is pinned because the mobile layout CSS targets Streamlit 1.55.0 markup. Before changing Streamlit versions, run a visual smoke test on desktop and mobile widths.
 
 ## 📁 Project Structure
 
@@ -149,14 +169,23 @@ stacking-tracker/
 ├── config.json         # Application constants (e.g., Modes, Data TTL)
 ├── i18n.json           # Externalized bilingual translation strings
 ├── requirements.txt    # Python dependencies
+├── requirements.lock.txt # Fully resolved dependency lockfile
 ├── .gitignore          # Git ignore rules
+├── ui/                 # Streamlit UI sections and component wrappers
+│   ├── input_section.py
+│   ├── records_section.py
+│   ├── stats_section.py
+│   └── styles.py
 ├── tests/              # Unit tests
-│   ├── test_stats.py   # Pytest coverage for Ao5 calculations
-│   └── test_record_id.py # RecordId row-matching safety tests
+│   ├── test_data_manager_gsheets.py # Google Sheets adapter tests
+│   ├── test_record_id.py            # RecordId row-matching safety tests
+│   └── test_stats.py                # Ao5, PB, and progress tests
 ├── utils/              # Utility modules
+│   ├── app_config.py            # Pure config/timezone/translation loading
 │   ├── data_manager.py           # Google Sheets data manager compatibility entrypoint
 │   ├── data_manager_gsheets.py   # Google Sheets connection & CRUD logic
 │   ├── i18n.py                   # Translations & language selection
+│   ├── records.py                # Pure record schema and row-matching helpers
 │   └── stats.py                  # Ao5, PB, and Progress calculations
 ├── .streamlit/
 │   └── secrets.toml    # Google Sheets credentials (not committed)

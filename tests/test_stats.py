@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 from utils.stats import calculate_ao5, iter_records_grouped_by_name_and_mode
 from utils.stats import prepare_today_top5_data, get_personal_pb_rank
 from utils.stats import DAILY_PROGRESS_COLUMNS, prepare_daily_progress_data, prepare_daily_best_data, prepare_pb_data, prepare_top_pb_attempts
-from utils.data_manager import TIMEZONE
+from utils.app_config import TIMEZONE
 from datetime import datetime, timedelta
 
 def test_calculate_ao5_less_than_5_records():
