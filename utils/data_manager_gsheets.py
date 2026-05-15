@@ -1,6 +1,7 @@
 import streamlit as st
 from streamlit_gsheets import GSheetsConnection
 from gspread import service_account_from_dict
+from gspread.exceptions import APIError
 import pandas as pd
 from datetime import datetime
 import uuid
@@ -17,11 +18,11 @@ def get_connection():
     """Establish and return the Google Sheets connection."""
     return st.connection("gsheets", type=GSheetsConnection)
 
-@retry(stop=stop_after_attempt(3), wait=wait_fixed(1))
+@retry(stop=stop_after_attempt(3), wait=wait_fixed(1), reraise=True)
 def _read_with_retry(conn, worksheet):
     return conn.read(worksheet=worksheet, ttl=DATA_TTL)
 
-@retry(stop=stop_after_attempt(3), wait=wait_fixed(1))
+@retry(stop=stop_after_attempt(3), wait=wait_fixed(1), reraise=True)
 def _write_with_retry(operation, *args, **kwargs):
     return operation(*args, **kwargs)
 
@@ -64,8 +65,27 @@ def _format_error(exc):
     if isinstance(exc, RetryError):
         last_exc = exc.last_attempt.exception()
         if last_exc is not None:
-            return str(last_exc)
+            return _format_error(last_exc)
+    if isinstance(exc, APIError):
+        response = getattr(exc, "response", None)
+        if response is not None:
+            try:
+                error = response.json().get("error", {})
+                message = error.get("message")
+                status = error.get("status")
+                code = error.get("code")
+                if message:
+                    prefix = "Google Sheets API error"
+                    details = " ".join(str(part) for part in (code, status) if part)
+                    return f"{prefix} ({details}): {message}" if details else f"{prefix}: {message}"
+            except ValueError:
+                text = getattr(response, "text", "")
+                if text:
+                    return text
     return str(exc)
+
+def format_cloud_error(exc):
+    return _format_error(exc)
 
 def _get_gsheets_service_account_config():
     """Read the configured gsheets service account config from Streamlit secrets."""
