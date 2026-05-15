@@ -21,8 +21,9 @@ class FakeConn:
 
 
 class FakeWorksheet:
-    def __init__(self, headers):
+    def __init__(self, headers, fail_updates=False):
         self.headers = headers
+        self.fail_updates = fail_updates
         self.updated_cells = []
 
     def row_values(self, row_idx):
@@ -30,6 +31,8 @@ class FakeWorksheet:
         return self.headers
 
     def update_cell(self, row_idx, col_idx, value):
+        if self.fail_updates:
+            raise RuntimeError("write failed")
         self.updated_cells.append((row_idx, col_idx, value))
 
 
@@ -118,3 +121,43 @@ def test_load_data_backfills_missing_record_ids(monkeypatch):
     assert df["RecordId"].tolist() == ["generated-record-id"]
     assert valid_df["RecordId"].tolist() == ["generated-record-id"]
     assert worksheet.updated_cells == [(2, 6, "generated-record-id")]
+
+
+def test_load_data_keeps_legacy_record_ids_when_backfill_fails(monkeypatch):
+    import pandas as pd
+
+    worksheet = FakeWorksheet(
+        ["Timestamp", "Name", "Mode", "Time", "IsScratch", "RecordId"],
+        fail_updates=True,
+    )
+    raw_df = pd.DataFrame([
+        {
+            "Timestamp": "2026-03-20 10:10:10",
+            "Name": "Johnny",
+            "Mode": "'3-3-3",
+            "Time": "3.111",
+            "IsScratch": "FALSE",
+            "RecordId": "",
+        },
+        {
+            "Timestamp": "2026-03-20 10:10:10",
+            "Name": "Johnny",
+            "Mode": "'3-3-3",
+            "Time": "3.222",
+            "IsScratch": "FALSE",
+            "RecordId": "",
+        },
+    ])
+    warnings = []
+
+    monkeypatch.setattr(gsheets_manager, "_read_with_retry", lambda conn, worksheet_name: raw_df)
+    monkeypatch.setattr(gsheets_manager, "_get_data_worksheet", lambda conn: worksheet)
+    monkeypatch.setattr(gsheets_manager.uuid, "uuid4", lambda: "generated-record-id")
+    monkeypatch.setattr(gsheets_manager.st, "warning", lambda message: warnings.append(message))
+    monkeypatch.setattr(gsheets_manager._write_with_retry.retry, "sleep", lambda _: None)
+
+    df, valid_df = gsheets_manager.load_data(FakeConn(client=None))
+
+    assert df["RecordId"].tolist() == ["legacy-row-2", "legacy-row-3"]
+    assert valid_df["RecordId"].tolist() == ["legacy-row-2", "legacy-row-3"]
+    assert warnings == ["RecordId backfill skipped: write failed"]

@@ -4,7 +4,7 @@ from gspread import service_account_from_dict
 import pandas as pd
 from datetime import datetime
 import uuid
-from tenacity import retry, stop_after_attempt, wait_fixed
+from tenacity import RetryError, retry, stop_after_attempt, wait_fixed
 from utils.app_config import DATA_TTL, DEFAULT_PLAYERS, TIMEZONE
 from utils.i18n import t
 from utils.records import (
@@ -45,6 +45,13 @@ def _backfill_missing_record_ids(conn, row_ids):
     record_id_col_idx = _ensure_record_id_header(ws)
     for row_idx, record_id in row_ids:
         _write_with_retry(ws.update_cell, row_idx, record_id_col_idx, record_id)
+
+def _format_error(exc):
+    if isinstance(exc, RetryError):
+        last_exc = exc.last_attempt.exception()
+        if last_exc is not None:
+            return str(last_exc)
+    return str(exc)
 
 def _get_gsheets_service_account_config():
     """Read the configured gsheets service account config from Streamlit secrets."""
@@ -94,18 +101,24 @@ def load_data(conn):
     try:
         raw_df = _read_with_retry(conn, "Data")
         missing_record_id_mask = _missing_record_id_mask(raw_df)
-        df = normalize_records_dataframe(
-            raw_df,
-            missing_record_id_factory=lambda _idx: str(uuid.uuid4()),
-        )
-        backfill_rows = [
-            (int(idx) + 2, df.loc[idx, RECORD_ID_COL])
+        df = normalize_records_dataframe(raw_df)
+
+        generated_record_ids = {
+            idx: str(uuid.uuid4())
             for idx in df.index[missing_record_id_mask]
-        ]
-        try:
-            _backfill_missing_record_ids(conn, backfill_rows)
-        except Exception as backfill_err:
-            st.warning(f"RecordId backfill skipped: {backfill_err}")
+        }
+        if generated_record_ids:
+            backfill_rows = [
+                (int(idx) + 2, record_id)
+                for idx, record_id in generated_record_ids.items()
+            ]
+            try:
+                _backfill_missing_record_ids(conn, backfill_rows)
+            except Exception as backfill_err:
+                st.warning(f"RecordId backfill skipped: {_format_error(backfill_err)}")
+            else:
+                for idx, record_id in generated_record_ids.items():
+                    df.loc[idx, RECORD_ID_COL] = record_id
         
         # Build a filtered DataFrame excluding scratched (Scratch) records
         valid_df = df[(df["Time"].notnull()) & (~df["IsScratch"])].copy()
