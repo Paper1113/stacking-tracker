@@ -37,14 +37,28 @@ def _missing_record_id_mask(df):
         | (record_ids.astype(str).str.lower() == "<na>")
     )
 
+
+class RecordIdBackfillError(RuntimeError):
+    def __init__(self, message, successful_record_ids):
+        super().__init__(message)
+        self.successful_record_ids = successful_record_ids
+
+
 def _backfill_missing_record_ids(conn, row_ids):
     if not row_ids:
-        return
+        return []
 
     ws = _get_data_worksheet(conn)
     record_id_col_idx = _ensure_record_id_header(ws)
+    successful_record_ids = []
     for row_idx, record_id in row_ids:
-        _write_with_retry(ws.update_cell, row_idx, record_id_col_idx, record_id)
+        try:
+            _write_with_retry(ws.update_cell, row_idx, record_id_col_idx, record_id)
+        except Exception as exc:
+            raise RecordIdBackfillError(_format_error(exc), successful_record_ids) from exc
+        successful_record_ids.append((row_idx, record_id))
+
+    return successful_record_ids
 
 def _format_error(exc):
     if isinstance(exc, RetryError):
@@ -112,13 +126,19 @@ def load_data(conn):
                 (int(idx) + 2, record_id)
                 for idx, record_id in generated_record_ids.items()
             ]
+            successful_backfills = []
             try:
-                _backfill_missing_record_ids(conn, backfill_rows)
+                successful_backfills = _backfill_missing_record_ids(conn, backfill_rows)
+            except RecordIdBackfillError as backfill_err:
+                successful_backfills = backfill_err.successful_record_ids
+                st.warning(f"RecordId backfill skipped: {backfill_err}")
             except Exception as backfill_err:
                 st.warning(f"RecordId backfill skipped: {_format_error(backfill_err)}")
-            else:
-                for idx, record_id in generated_record_ids.items():
-                    df.loc[idx, RECORD_ID_COL] = record_id
+
+            for row_idx, record_id in successful_backfills:
+                df_idx = row_idx - 2
+                if df_idx in df.index:
+                    df.loc[df_idx, RECORD_ID_COL] = record_id
         
         # Build a filtered DataFrame excluding scratched (Scratch) records
         valid_df = df[(df["Time"].notnull()) & (~df["IsScratch"])].copy()
