@@ -60,7 +60,7 @@ def _backfill_missing_record_ids(conn, row_ids):
         return []
 
     ws = _get_data_worksheet(conn)
-    record_id_col_idx = _ensure_record_id_header(ws)
+    record_id_col_idx = _ensure_record_id_header(ws, refresh=True)
     successful_record_ids = []
     for row_batch in _chunked(row_ids, BACKFILL_BATCH_SIZE):
         batch_payload = [
@@ -251,10 +251,10 @@ def get_current_timestamp():
     """Return the current timestamp string."""
     return datetime.now(TIMEZONE).strftime("%Y-%m-%d %H:%M:%S")
 
-def _ensure_record_id_header(ws):
+def _ensure_record_id_header(ws, refresh=False):
     """Ensure the Data worksheet has a RecordId header column."""
     cache_key = id(ws)
-    if cache_key in _RECORD_ID_COL_CACHE:
+    if not refresh and cache_key in _RECORD_ID_COL_CACHE:
         return _RECORD_ID_COL_CACHE[cache_key]
 
     headers = _write_with_retry(ws.row_values, 1)

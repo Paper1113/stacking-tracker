@@ -298,6 +298,28 @@ def test_load_data_retains_successful_record_ids_when_backfill_partially_fails(m
     assert warnings == ["RecordId backfill skipped: write failed"]
 
 
+def test_backfill_revalidates_record_id_column_after_header_reorder(monkeypatch):
+    gsheets_manager._RECORD_ID_COL_CACHE.clear()
+    worksheet = FakeWorksheet(["Timestamp", "Name", "Mode", "Time", "IsScratch", "RecordId"])
+
+    assert gsheets_manager._ensure_record_id_header(worksheet) == 6
+
+    worksheet.headers = ["Timestamp", "Name", "Mode", "Time", "IsScratch", "Notes", "RecordId"]
+    monkeypatch.setattr(gsheets_manager, "_get_data_worksheet", lambda conn: worksheet)
+
+    successful_backfills = gsheets_manager._backfill_missing_record_ids(
+        FakeConn(client=None),
+        [(2, "generated-record-id")],
+    )
+
+    assert successful_backfills == [(2, "generated-record-id")]
+    assert worksheet.row_values_calls == 2
+    assert worksheet.batch_updates == [(
+        [{"range": "G2", "values": [["generated-record-id"]]}],
+        {"value_input_option": "RAW"},
+    )]
+
+
 def test_ensure_record_id_header_caches_column_lookup():
     gsheets_manager._RECORD_ID_COL_CACHE.clear()
     worksheet = FakeWorksheet(["Timestamp", "Name", "Mode", "Time", "IsScratch", "RecordId"])
