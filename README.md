@@ -38,7 +38,7 @@ A lightweight practice logging app built for Sport Stacking enthusiasts and pare
 - **In-Memory State Sync (0-Read Optimization)**: Drastically reduces UI lag and API quotas by persisting the dataset in `st.session_state`. Record additions, updates, and deletions mutate the UI directly instantly without triggering full database reads.
 - **Manual Refresh**: A "Refresh Data" button gives users control to instantly sync with the latest cloud data, overriding the local session state.
 - **API Resilience**: Powered by `tenacity`, Google Sheets reads and writes use automated retry logic (up to 3 attempts) to prevent crashes from temporary network timeouts.
-- **Stable Record Targeting**: New records carry a unique `RecordId`, so update/delete actions target the intended row even when timestamp/name/mode are duplicated. Legacy rows without a `RecordId` use deterministic row-based IDs without extra Sheet writes.
+- **Stable Record Targeting**: Each record carries a unique `RecordId`, so update/delete actions target the intended row even when timestamp/name/mode are duplicated. Legacy rows without a `RecordId` are migrated once using batched writes.
 
 ### 🔄 CI/CD & Automated Testing
 - Protected by **GitHub Actions** workflows
@@ -88,7 +88,7 @@ Header row:
 | Timestamp | Name | Mode | Time | IsScratch | RecordId |
 |-----------|------|------|------|-----------|----------|
 
-- `RecordId` is a unique identifier for each new row; legacy rows without it are handled with stable row-based IDs without automatic Sheet backfills
+- `RecordId` is a unique identifier for each row; legacy rows without it are backfilled once using batched writes to avoid ongoing API usage
 
 #### `Players` Worksheet (Recommended)
 Header row:

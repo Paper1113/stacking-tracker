@@ -2,6 +2,7 @@ import streamlit as st
 from streamlit_gsheets import GSheetsConnection
 from gspread import service_account_from_dict
 from gspread.exceptions import APIError
+from gspread.utils import rowcol_to_a1
 import pandas as pd
 from datetime import datetime
 import uuid
@@ -14,6 +15,7 @@ from utils.records import (
     find_row_index,
 )
 
+BACKFILL_BATCH_SIZE = 100
 _DATA_WORKSHEET_CACHE = {}
 _RECORD_ID_COL_CACHE = {}
 
@@ -28,6 +30,54 @@ def _read_with_retry(conn, worksheet):
 @retry(stop=stop_after_attempt(3), wait=wait_fixed(1), reraise=True)
 def _write_with_retry(operation, *args, **kwargs):
     return operation(*args, **kwargs)
+
+def _missing_record_id_mask(df):
+    if df is None or df.empty or RECORD_ID_COL not in df.columns:
+        return pd.Series([True] * len(df), index=df.index) if df is not None else pd.Series(dtype=bool)
+
+    record_ids = df[RECORD_ID_COL]
+    return (
+        record_ids.isna()
+        | (record_ids.astype(str).str.strip() == "")
+        | (record_ids.astype(str).str.lower() == "nan")
+        | (record_ids.astype(str).str.lower() == "<na>")
+    )
+
+
+class RecordIdBackfillError(RuntimeError):
+    def __init__(self, message, successful_record_ids):
+        super().__init__(message)
+        self.successful_record_ids = successful_record_ids
+
+
+def _chunked(items, size):
+    for start in range(0, len(items), size):
+        yield items[start:start + size]
+
+
+def _backfill_missing_record_ids(conn, row_ids):
+    if not row_ids:
+        return []
+
+    ws = _get_data_worksheet(conn)
+    record_id_col_idx = _ensure_record_id_header(ws)
+    successful_record_ids = []
+    for row_batch in _chunked(row_ids, BACKFILL_BATCH_SIZE):
+        batch_payload = [
+            {
+                "range": rowcol_to_a1(row_idx, record_id_col_idx),
+                "values": [[record_id]],
+            }
+            for row_idx, record_id in row_batch
+        ]
+        try:
+            _write_with_retry(ws.batch_update, batch_payload, value_input_option="RAW")
+        except Exception as exc:
+            raise RecordIdBackfillError(_format_error(exc), successful_record_ids) from exc
+        successful_record_ids.extend(row_batch)
+
+    return successful_record_ids
+
 
 def _format_error(exc):
     if isinstance(exc, RetryError):
@@ -119,7 +169,31 @@ def load_data(conn):
     """
     try:
         raw_df = _read_with_retry(conn, "Data")
+        missing_record_id_mask = _missing_record_id_mask(raw_df)
         df = normalize_records_dataframe(raw_df)
+
+        generated_record_ids = {
+            idx: str(uuid.uuid4())
+            for idx in df.index[missing_record_id_mask]
+        }
+        if generated_record_ids:
+            backfill_rows = [
+                (int(idx) + 2, record_id)
+                for idx, record_id in generated_record_ids.items()
+            ]
+            successful_backfills = []
+            try:
+                successful_backfills = _backfill_missing_record_ids(conn, backfill_rows)
+            except RecordIdBackfillError as backfill_err:
+                successful_backfills = backfill_err.successful_record_ids
+                st.warning(f"RecordId backfill skipped: {backfill_err}")
+            except Exception as backfill_err:
+                st.warning(f"RecordId backfill skipped: {_format_error(backfill_err)}")
+
+            for row_idx, record_id in successful_backfills:
+                df_idx = row_idx - 2
+                if df_idx in df.index:
+                    df.loc[df_idx, RECORD_ID_COL] = record_id
         
         # Build a filtered DataFrame excluding scratched (Scratch) records
         valid_df = df[(df["Time"].notnull()) & (~df["IsScratch"])].copy()
