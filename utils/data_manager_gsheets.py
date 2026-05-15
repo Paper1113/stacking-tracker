@@ -2,6 +2,7 @@ import streamlit as st
 from streamlit_gsheets import GSheetsConnection
 from gspread import service_account_from_dict
 from gspread.exceptions import APIError
+from gspread.utils import rowcol_to_a1
 import pandas as pd
 from datetime import datetime
 import uuid
@@ -13,6 +14,10 @@ from utils.records import (
     normalize_records_dataframe,
     find_row_index,
 )
+
+BACKFILL_BATCH_SIZE = 100
+_DATA_WORKSHEET_CACHE = {}
+_RECORD_ID_COL_CACHE = {}
 
 def get_connection():
     """Establish and return the Google Sheets connection."""
@@ -45,6 +50,11 @@ class RecordIdBackfillError(RuntimeError):
         self.successful_record_ids = successful_record_ids
 
 
+def _chunked(items, size):
+    for start in range(0, len(items), size):
+        yield items[start:start + size]
+
+
 def _backfill_missing_record_ids(conn, row_ids):
     if not row_ids:
         return []
@@ -52,12 +62,19 @@ def _backfill_missing_record_ids(conn, row_ids):
     ws = _get_data_worksheet(conn)
     record_id_col_idx = _ensure_record_id_header(ws)
     successful_record_ids = []
-    for row_idx, record_id in row_ids:
+    for row_batch in _chunked(row_ids, BACKFILL_BATCH_SIZE):
+        batch_payload = [
+            {
+                "range": rowcol_to_a1(row_idx, record_id_col_idx),
+                "values": [[record_id]],
+            }
+            for row_idx, record_id in row_batch
+        ]
         try:
-            _write_with_retry(ws.update_cell, row_idx, record_id_col_idx, record_id)
+            _write_with_retry(ws.batch_update, batch_payload, value_input_option="RAW")
         except Exception as exc:
             raise RecordIdBackfillError(_format_error(exc), successful_record_ids) from exc
-        successful_record_ids.append((row_idx, record_id))
+        successful_record_ids.extend(row_batch)
 
     return successful_record_ids
 
@@ -104,11 +121,25 @@ def _get_gsheets_service_account_config():
     credentials = {k: v for k, v in config.items() if k not in {"spreadsheet", "worksheet"}}
     return spreadsheet_url, credentials
 
+def _worksheet_cache_key_from_credentials(spreadsheet_url, credentials):
+    return (
+        "service-account",
+        spreadsheet_url,
+        credentials.get("client_email"),
+        credentials.get("private_key_id"),
+    )
+
 def _get_data_worksheet_from_service_account_secrets():
     """Fallback worksheet lookup using raw service-account secrets."""
     spreadsheet_url, credentials = _get_gsheets_service_account_config()
+    cache_key = _worksheet_cache_key_from_credentials(spreadsheet_url, credentials)
+    if cache_key in _DATA_WORKSHEET_CACHE:
+        return _DATA_WORKSHEET_CACHE[cache_key]
+
     client = service_account_from_dict(credentials)
-    return client.open_by_url(spreadsheet_url).worksheet("Data")
+    worksheet = client.open_by_url(spreadsheet_url).worksheet("Data")
+    _DATA_WORKSHEET_CACHE[cache_key] = worksheet
+    return worksheet
 
 def _get_data_worksheet(conn):
     """Open the Data worksheet for write operations.
@@ -122,7 +153,10 @@ def _get_data_worksheet(conn):
     # way to open a named worksheet via the connection client.  The hasattr
     # guard + fallback below protect against future API changes.
     if client is not None and hasattr(client, "_select_worksheet"):
-        return client._select_worksheet(worksheet="Data")
+        cache_key = ("connection-client", id(client), "Data")
+        if cache_key not in _DATA_WORKSHEET_CACHE:
+            _DATA_WORKSHEET_CACHE[cache_key] = client._select_worksheet(worksheet="Data")
+        return _DATA_WORKSHEET_CACHE[cache_key]
 
     return _get_data_worksheet_from_service_account_secrets()
 
@@ -218,12 +252,19 @@ def get_current_timestamp():
 
 def _ensure_record_id_header(ws):
     """Ensure the Data worksheet has a RecordId header column."""
+    cache_key = id(ws)
+    if cache_key in _RECORD_ID_COL_CACHE:
+        return _RECORD_ID_COL_CACHE[cache_key]
+
     headers = _write_with_retry(ws.row_values, 1)
     if RECORD_ID_COL in headers:
-        return headers.index(RECORD_ID_COL) + 1
+        record_id_col_idx = headers.index(RECORD_ID_COL) + 1
+        _RECORD_ID_COL_CACHE[cache_key] = record_id_col_idx
+        return record_id_col_idx
 
     record_id_col_idx = max(len(headers) + 1, 6)
     _write_with_retry(ws.update_cell, 1, record_id_col_idx, RECORD_ID_COL)
+    _RECORD_ID_COL_CACHE[cache_key] = record_id_col_idx
     return record_id_col_idx
 
 def save_record_to_cloud(conn, timestamp_str, name, mode, time_val, is_scratch, record_id=None):
@@ -270,9 +311,12 @@ def update_record_in_cloud(conn, timestamp_str, name, mode, new_time_val, is_scr
     if row_idx is None:
         raise ValueError(t("msg_record_not_found"))
         
-    # Update time (col 4 / D) and IsScratch (col 5 / E)
-    _write_with_retry(ws.update_cell, row_idx, 4, new_time_val)
-    _write_with_retry(ws.update_cell, row_idx, 5, is_scratch)
+    _write_with_retry(
+        ws.update,
+        f"D{row_idx}:E{row_idx}",
+        [[new_time_val, is_scratch]],
+        value_input_option="USER_ENTERED",
+    )
 
 def delete_record_from_cloud(conn, timestamp_str, name, mode, record_id=None):
     """Delete a specific record from Google Sheets."""
