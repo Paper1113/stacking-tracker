@@ -31,6 +31,8 @@ class FakeWorksheet:
         self.row_values_calls = 0
         self.batch_updates = []
         self.range_updates = []
+        self.appended_rows = []
+        self.appended_row_batches = []
         self.updated_cells = []
 
     def row_values(self, row_idx):
@@ -59,6 +61,16 @@ class FakeWorksheet:
         if self.fail_updates:
             raise RuntimeError("write failed")
         self.range_updates.append((range_name, values, kwargs))
+
+    def append_row(self, values, **kwargs):
+        if self.fail_updates:
+            raise RuntimeError("write failed")
+        self.appended_rows.append((values, kwargs))
+
+    def append_rows(self, values, **kwargs):
+        if self.fail_updates:
+            raise RuntimeError("write failed")
+        self.appended_row_batches.append((values, kwargs))
 
 
 def test_get_data_worksheet_prefers_connection_client(monkeypatch):
@@ -144,7 +156,6 @@ def test_write_with_retry_reraises_final_error(monkeypatch):
 def test_load_data_backfills_missing_record_ids_once(monkeypatch):
     import pandas as pd
 
-    gsheets_manager._RECORD_ID_COL_CACHE.clear()
     worksheet = FakeWorksheet(["Timestamp", "Name", "Mode", "Time", "IsScratch", "RecordId"])
     raw_df = pd.DataFrame([
         {
@@ -176,7 +187,6 @@ def test_load_data_backfills_missing_record_ids_once(monkeypatch):
 def test_load_data_skips_backfill_when_record_ids_already_exist(monkeypatch):
     import pandas as pd
 
-    gsheets_manager._RECORD_ID_COL_CACHE.clear()
     worksheet = FakeWorksheet(["Timestamp", "Name", "Mode", "Time", "IsScratch", "RecordId"])
     raw_df = pd.DataFrame([
         {
@@ -204,7 +214,6 @@ def test_load_data_skips_backfill_when_record_ids_already_exist(monkeypatch):
 def test_load_data_keeps_legacy_record_ids_when_backfill_fails(monkeypatch):
     import pandas as pd
 
-    gsheets_manager._RECORD_ID_COL_CACHE.clear()
     worksheet = FakeWorksheet(
         ["Timestamp", "Name", "Mode", "Time", "IsScratch", "RecordId"],
         fail_updates=True,
@@ -245,7 +254,6 @@ def test_load_data_keeps_legacy_record_ids_when_backfill_fails(monkeypatch):
 def test_load_data_retains_successful_record_ids_when_backfill_partially_fails(monkeypatch):
     import pandas as pd
 
-    gsheets_manager._RECORD_ID_COL_CACHE.clear()
     worksheet = FakeWorksheet(
         ["Timestamp", "Name", "Mode", "Time", "IsScratch", "RecordId"],
         fail_rows={3},
@@ -299,7 +307,6 @@ def test_load_data_retains_successful_record_ids_when_backfill_partially_fails(m
 
 
 def test_backfill_revalidates_record_id_column_after_header_reorder(monkeypatch):
-    gsheets_manager._RECORD_ID_COL_CACHE.clear()
     worksheet = FakeWorksheet(["Timestamp", "Name", "Mode", "Time", "IsScratch", "RecordId"])
 
     assert gsheets_manager._ensure_record_id_header(worksheet) == 6
@@ -320,14 +327,50 @@ def test_backfill_revalidates_record_id_column_after_header_reorder(monkeypatch)
     )]
 
 
-def test_ensure_record_id_header_caches_column_lookup():
-    gsheets_manager._RECORD_ID_COL_CACHE.clear()
+def test_ensure_record_id_header_rechecks_header_each_call():
     worksheet = FakeWorksheet(["Timestamp", "Name", "Mode", "Time", "IsScratch", "RecordId"])
 
     assert gsheets_manager._ensure_record_id_header(worksheet) == 6
-    assert gsheets_manager._ensure_record_id_header(worksheet) == 6
+    worksheet.headers = ["Timestamp", "Name", "Mode", "Time", "IsScratch", "Notes", "RecordId"]
+    assert gsheets_manager._ensure_record_id_header(worksheet) == 7
+
+    assert worksheet.row_values_calls == 2
+    assert worksheet.updated_cells == []
+
+
+def test_ensure_record_id_header_restores_deleted_header():
+    worksheet = FakeWorksheet(["Timestamp", "Name", "Mode", "Time", "IsScratch", "Notes"])
+
+    assert gsheets_manager._ensure_record_id_header(worksheet) == 7
 
     assert worksheet.row_values_calls == 1
+    assert worksheet.updated_cells == [(1, 7, "RecordId")]
+
+
+def test_save_record_revalidates_record_id_header_after_header_reorder(monkeypatch):
+    worksheet = FakeWorksheet(["Timestamp", "Name", "Mode", "Time", "IsScratch", "RecordId"])
+
+    assert gsheets_manager._ensure_record_id_header(worksheet) == 6
+    worksheet.headers = ["Timestamp", "Name", "Mode", "Time", "IsScratch", "Notes", "RecordId"]
+    monkeypatch.setattr(gsheets_manager, "_get_data_worksheet", lambda conn: worksheet)
+    monkeypatch.setattr(gsheets_manager.uuid, "uuid4", lambda: "generated-record-id")
+
+    record_id = gsheets_manager.save_record_to_cloud(
+        FakeConn(client=None),
+        "2026-03-20 10:10:10",
+        "Johnny",
+        "3-3-3",
+        3.111,
+        False,
+    )
+
+    assert record_id == "generated-record-id"
+    assert worksheet.row_values_calls == 2
+    assert worksheet.updated_cells == []
+    assert worksheet.appended_rows == [(
+        ["2026-03-20 10:10:10", "Johnny", "'3-3-3", 3.111, False, "", "generated-record-id"],
+        {"table_range": "A1", "value_input_option": "USER_ENTERED"},
+    )]
 
 
 def test_update_record_updates_time_and_scratch_in_single_range(monkeypatch):

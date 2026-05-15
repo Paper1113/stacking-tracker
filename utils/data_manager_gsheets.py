@@ -11,13 +11,13 @@ from utils.app_config import DATA_TTL, DEFAULT_PLAYERS, TIMEZONE
 from utils.i18n import t
 from utils.records import (
     RECORD_ID_COL,
+    RECORD_COLUMNS,
     normalize_records_dataframe,
     find_row_index,
 )
 
 BACKFILL_BATCH_SIZE = 100
 _DATA_WORKSHEET_CACHE = {}
-_RECORD_ID_COL_CACHE = {}
 
 def get_connection():
     """Establish and return the Google Sheets connection."""
@@ -60,7 +60,7 @@ def _backfill_missing_record_ids(conn, row_ids):
         return []
 
     ws = _get_data_worksheet(conn)
-    record_id_col_idx = _ensure_record_id_header(ws, refresh=True)
+    record_id_col_idx = _ensure_record_id_header(ws)
     successful_record_ids = []
     for row_batch in _chunked(row_ids, BACKFILL_BATCH_SIZE):
         batch_payload = [
@@ -251,50 +251,72 @@ def get_current_timestamp():
     """Return the current timestamp string."""
     return datetime.now(TIMEZONE).strftime("%Y-%m-%d %H:%M:%S")
 
-def _ensure_record_id_header(ws, refresh=False):
+def _ensure_record_id_header_with_headers(ws):
     """Ensure the Data worksheet has a RecordId header column."""
-    cache_key = id(ws)
-    if not refresh and cache_key in _RECORD_ID_COL_CACHE:
-        return _RECORD_ID_COL_CACHE[cache_key]
-
     headers = _write_with_retry(ws.row_values, 1)
     if RECORD_ID_COL in headers:
-        record_id_col_idx = headers.index(RECORD_ID_COL) + 1
-        _RECORD_ID_COL_CACHE[cache_key] = record_id_col_idx
-        return record_id_col_idx
+        return headers.index(RECORD_ID_COL) + 1, headers
 
     record_id_col_idx = max(len(headers) + 1, 6)
     _write_with_retry(ws.update_cell, 1, record_id_col_idx, RECORD_ID_COL)
-    _RECORD_ID_COL_CACHE[cache_key] = record_id_col_idx
+    updated_headers = list(headers)
+    while len(updated_headers) < record_id_col_idx:
+        updated_headers.append("")
+    updated_headers[record_id_col_idx - 1] = RECORD_ID_COL
+    return record_id_col_idx, updated_headers
+
+def _ensure_record_id_header(ws):
+    record_id_col_idx, _headers = _ensure_record_id_header_with_headers(ws)
     return record_id_col_idx
+
+def _build_record_row(headers, timestamp_str, name, mode, time_val, is_scratch, record_id):
+    values_by_header = {
+        "Timestamp": timestamp_str,
+        "Name": name,
+        "Mode": f"'{mode}" if mode in ["3-3-3", "3-6-3"] else mode,
+        "Time": time_val,
+        "IsScratch": is_scratch,
+        RECORD_ID_COL: record_id,
+    }
+    width = max(len(headers), len(RECORD_COLUMNS))
+    row_data = [""] * width
+
+    for idx, header in enumerate(headers):
+        if header in values_by_header:
+            row_data[idx] = values_by_header[header]
+
+    for idx, column in enumerate(RECORD_COLUMNS):
+        if column not in headers and idx < width:
+            row_data[idx] = values_by_header[column]
+
+    return row_data
 
 def save_record_to_cloud(conn, timestamp_str, name, mode, time_val, is_scratch, record_id=None):
     """Save a single record directly to Google Sheets."""
     ws = _get_data_worksheet(conn)
-    _ensure_record_id_header(ws)
+    _record_id_col_idx, headers = _ensure_record_id_header_with_headers(ws)
     if not record_id:
         record_id = str(uuid.uuid4())
     
-    # Prefix safe_mode to prevent Google Sheets from auto-formatting '3-3-3' as dates
-    safe_mode = f"'{mode}" if mode in ["3-3-3", "3-6-3"] else mode
-    row_data = [timestamp_str, name, safe_mode, time_val, is_scratch, record_id]
+    row_data = _build_record_row(headers, timestamp_str, name, mode, time_val, is_scratch, record_id)
     _write_with_retry(ws.append_row, row_data, table_range="A1", value_input_option="USER_ENTERED")
     return record_id
 
 def sync_temp_logs_to_cloud(conn, temp_logs):
     """Sync an array of temp logs to Google Sheets using batch append_rows."""
     ws = _get_data_worksheet(conn)
-    _ensure_record_id_header(ws)
+    _record_id_col_idx, headers = _ensure_record_id_header_with_headers(ws)
 
     rows_data = [
-        [
+        _build_record_row(
+            headers,
             log["Timestamp"],
             log["Name"],
-            f"'{log['Mode']}" if log["Mode"] in ["3-3-3", "3-6-3"] else log["Mode"],
+            log["Mode"],
             log["Time"],
             log["IsScratch"],
             log.get(RECORD_ID_COL) or str(uuid.uuid4())
-        ]
+        )
         for log in temp_logs
     ]
     _write_with_retry(ws.append_rows, rows_data, table_range="A1", value_input_option="USER_ENTERED")
